@@ -3,9 +3,9 @@ Pinned upstream dependencies for g1_sonic_system1
 
 This project depends on three upstream repositories, vendored as git
 submodules under third_party/ and pinned to the exact commits we used.
-Our local modifications to two of them are captured as patch files under
-patches/ (the third, Isaac-GR00T, has no in-repo edits -- our GR00T changes
-are runtime monkeypatches inside our own scripts/launch_sft.py).
+Only lerobot carries an in-repo source edit (captured as a patch under
+patches/). Isaac-GR00T's changes are runtime monkeypatches inside our own
+scripts/launch_sft.py; GR00T-WholeBodyControl is used unmodified.
 
 Submodules (see .gitmodules; commit is the staged gitlink, shown below)
 -----------------------------------------------------------------------
@@ -23,17 +23,14 @@ Submodules (see .gitmodules; commit is the staged gitlink, shown below)
             (ACT discrete-FSQ classification-head surgery; touches
              src/lerobot/policies/act/configuration_act.py and
              src/lerobot/policies/act/modeling_act.py)
+            The hands-in variant additionally applies the per-task
+            hand-active-mask edit via scripts/bB_patch_act_hand_mask.py
+            (anchor-based; run after the patch above).
 
 3) third_party/GR00T-WholeBodyControl   (SONIC -- whole-body control deploy)
    url    : https://github.com/NVlabs/GR00T-WholeBodyControl.git
    commit : 60de0df7ffedeef415fe58d435e92cc5b01ba3d9
-   patch  : patches/wbc-observation-config.patch
-            NOTE: this patch is a FILE-MODE change only (100644 -> 100755)
-            on gear_sonic_deploy/policy/release/observation_config.yaml.
-            The file's CONTENT is byte-identical to the pinned upstream
-            commit -- there is no content modification. (The exec-bit flip
-            is a network-filesystem artifact on the cluster.) Kept for
-            fidelity to the working-tree state.
+   patch  : (none -- used unmodified)
             NOTE: this upstream repo is ~5.9 GB (git-lfs meshes / ONNX /
             checkpoints). It is referenced as a submodule ONLY; its content
             is NOT vendored into this repo.
@@ -45,12 +42,13 @@ How to reproduce the exact environment
   cd g1-system10
   # (or, if already cloned:  git submodule update --init --recursive)
 
-  # 2. Apply our captured patches on top of the pinned upstream checkouts:
+  # 2. Apply our lerobot source edit on top of the pinned checkout:
   git -C third_party/lerobot apply ../../patches/lerobot-act-discrete-head.patch
-  # wbc patch is a mode-only change; apply only if you need the exec bit:
-  # git -C third_party/GR00T-WholeBodyControl apply ../../patches/wbc-observation-config.patch
+  #    (hands-in ACT only) then add the per-task hand loss mask:
+  #    python scripts/bB_patch_act_hand_mask.py
 
   # 3. Isaac-GR00T needs no patch (runtime monkeypatch lives in scripts/launch_sft.py).
+  # 4. GR00T-WholeBodyControl is used unmodified.
 
 Note: the submodule gitlinks pin the exact commits above; if a
 `git submodule update` cannot find a commit (e.g. upstream force-push /

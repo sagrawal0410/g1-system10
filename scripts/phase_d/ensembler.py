@@ -43,7 +43,6 @@ from typing import Optional, Sequence
 
 import numpy as np
 
-
 class TemporalEnsembler:
     def __init__(
         self,
@@ -57,7 +56,7 @@ class TemporalEnsembler:
     ):
         self.action_dim = int(action_dim)
         self.chunk_length = int(chunk_length)
-        self.max_timesteps = int(max_timesteps)  # sanity cap only (banded store, cheap)
+        self.max_timesteps = int(max_timesteps)
         self.m = float(m)
         self.prune = prune
         self.newest_only_dims = np.asarray(sorted(set(newest_only_dims or [])), dtype=int)
@@ -72,8 +71,7 @@ class TemporalEnsembler:
         self.reset()
 
     def reset(self) -> None:
-        # query_time -> chunk [L, D]. Banded/sparse equivalent of the dense
-        # [T, T+C, D] ACT buffer.
+
         self._chunks: dict[int, np.ndarray] = {}
 
     def add_chunk(self, t: int, chunk: np.ndarray) -> None:
@@ -85,7 +83,7 @@ class TemporalEnsembler:
         L = min(chunk.shape[0], self.chunk_length)
         self._chunks[int(t)] = chunk[:L].copy()
         if self.prune:
-            # drop chunks that can no longer cover any t' >= (t - C + 1)
+
             cutoff = t - self.chunk_length
             for q in [q for q in self._chunks if q < cutoff]:
                 del self._chunks[q]
@@ -97,13 +95,13 @@ class TemporalEnsembler:
             ch = self._chunks.get(q)
             if ch is not None and (t - q) < ch.shape[0]:
                 rows.append(q)
-        return rows  # already ascending
+        return rows
 
     def coverage(self, t: int) -> int:
         return len(self._covering_rows(t))
 
     def get_action(self, t: int, require_coverage: bool = True) -> np.ndarray:
-        rows = self._covering_rows(t)  # oldest-first
+        rows = self._covering_rows(t)
         n = len(rows)
         if n == 0:
             if require_coverage:
@@ -113,7 +111,7 @@ class TemporalEnsembler:
                 )
             return np.full(self.action_dim, np.nan)
 
-        stacked = np.stack([self._chunks[q][t - q] for q in rows], axis=0)  # [n, D], row 0 oldest
+        stacked = np.stack([self._chunks[q][t - q] for q in rows], axis=0)
         w = np.exp(-self.m * np.arange(n, dtype=np.float64))
         w /= w.sum()
 
@@ -121,11 +119,10 @@ class TemporalEnsembler:
         if self._avg_dims.size:
             out[self._avg_dims] = (w[:, None] * stacked[:, self._avg_dims]).sum(axis=0)
         if self.newest_only_dims.size:
-            out[self.newest_only_dims] = stacked[-1, self.newest_only_dims]  # newest covering
+            out[self.newest_only_dims] = stacked[-1, self.newest_only_dims]
         for g in self.quat_groups:
             out[list(g)] = _weighted_quat_mean(stacked[:, list(g)], w)
         return out
-
 
 def _weighted_quat_mean(quats: np.ndarray, w: np.ndarray) -> np.ndarray:
     """Weighted average of unit quaternions. Sign-align to the newest (last)
@@ -137,7 +134,7 @@ def _weighted_quat_mean(quats: np.ndarray, w: np.ndarray) -> np.ndarray:
     norms = np.linalg.norm(q, axis=1, keepdims=True)
     norms[norms == 0] = 1.0
     q /= norms
-    ref = q[-1]  # newest
+    ref = q[-1]
     signs = np.sign((q * ref).sum(axis=1))
     signs[signs == 0] = 1.0
     q *= signs[:, None]

@@ -39,25 +39,16 @@ ACTION_DIM = 78
 STATE_DIM = 36
 EXEC_HORIZON = 40
 NUM_CLASSES = 32
-# Theoretical output range of the FSQ argmax head: (idx - num_classes//2)/scale
-# for idx in [0, num_classes-1]. For 32 classes @ scale 16 -> [-1.0, +0.9375].
-# The trained model's argmax stays inside the data subrange (~[-0.4375, 0.4375]);
-# a near-untrained proxy can hit the extremes. The REAL invariant (validation #1)
-# is that every value is an integer multiple of 1/scale.
-GRID_MIN = -(NUM_CLASSES // 2) / GRID_SCALE           # -1.0
-GRID_MAX = (NUM_CLASSES - 1 - NUM_CLASSES // 2) / GRID_SCALE  # 0.9375
 
-# --- hands-in only ---------------------------------------------------------
-# For task-conditioned hands-in, observation.state is 39-dim: [0:36]=proprio,
-# [36:39]=one-hot task-id. Task -> one-hot local index within [36:39].
+GRID_MIN = -(NUM_CLASSES // 2) / GRID_SCALE
+GRID_MAX = (NUM_CLASSES - 1 - NUM_CLASSES // 2) / GRID_SCALE
+
 TASK_ONEHOT_IDX = {
     "bottle_cupnoodles_shelf": 0,
     "cup_wipe_sponge_dryingrack": 1,
     "floor_box_table": 2,
 }
-# Per-task ACTIVE hand dims (inactive dims were never trained -> excluded from
-# scoring downstream). LOCAL indices within each block; "all" uses ABSOLUTE
-# action indices. motion_token block is fully active (absent => full block).
+
 HANDSIN_ACTIVE = {
     "bottle_cupnoodles_shelf": {
         "left_hand_joints": [],
@@ -75,7 +66,6 @@ HANDSIN_ACTIVE = {
         "all": list(range(64)) + [64, 71],
     },
 }
-
 
 def load_policy_and_processors(ckpt: str, device: str):
     from lerobot.policies.act.modeling_act import ACTPolicy
@@ -95,7 +85,6 @@ def load_policy_and_processors(ckpt: str, device: str):
     )
     return policy, pre, post
 
-
 def assert_grid_snapped(latent: np.ndarray, tol: float = 1e-3):
     scaled = latent * GRID_SCALE
     off = np.abs(scaled - np.round(scaled))
@@ -110,7 +99,6 @@ def assert_grid_snapped(latent: np.ndarray, tol: float = 1e-3):
             f"min={latent.min():.4f} max={latent.max():.4f}"
         )
 
-
 def build_obs(img_dict, state_vec):
     """Unbatched CPU observation dict. The preprocessor pipeline adds the batch
     dim (to_batch_processor) and moves to the target device (device_processor)."""
@@ -123,14 +111,12 @@ def build_obs(img_dict, state_vec):
     obs["observation.state"] = torch.as_tensor(np.asarray(state_vec, dtype=np.float32))
     return obs
 
-
 @torch.no_grad()
 def infer_chunk(policy, pre, img_dict, state_vec):
     obs = build_obs(img_dict, state_vec)
     proc = pre(obs)
-    chunk = policy.predict_action_chunk(proc)  # (1, chunk_size, 78)
-    return chunk[0].float().cpu().numpy()  # (chunk_size, 78)
-
+    chunk = policy.predict_action_chunk(proc)
+    return chunk[0].float().cpu().numpy()
 
 def rollout(ds, g0, T, state_joints, policy, pre, ablate_dim):
     """Teacher-forced open-loop rollout, re-planning every EXEC_HORIZON steps.
@@ -148,9 +134,9 @@ def rollout(ds, g0, T, state_joints, policy, pre, ablate_dim):
     for s in range(0, T, EXEC_HORIZON):
         frame = ds[g0 + s]
         imgs = {cam: frame[f"observation.images.{cam}"] for cam in CAMS}
-        chunk_n = infer_chunk(policy, pre, imgs, state_joints[s])   # normal (true proprio)
+        chunk_n = infer_chunk(policy, pre, imgs, state_joints[s])
         state_abl = state_joints[s].copy()
-        state_abl[:ablate_dim] = state_t0[:ablate_dim]              # hold proprio at t0
+        state_abl[:ablate_dim] = state_t0[:ablate_dim]
         chunk_a = infer_chunk(policy, pre, imgs, state_abl)
         if not checked:
             if chunk_n.shape != (EXEC_HORIZON, ACTION_DIM):
@@ -162,7 +148,6 @@ def rollout(ds, g0, T, state_joints, policy, pre, ablate_dim):
         pred[s : s + L] = chunk_n[:L]
         pred_abl[s : s + L] = chunk_a[:L]
     return pred, pred_abl
-
 
 def main():
     ap = argparse.ArgumentParser()
@@ -184,7 +169,7 @@ def main():
 
     ablate_dim = args.ablate_proprio_dim
     if args.hands_in and ablate_dim < 0:
-        ablate_dim = 36  # hold proprio [0:36], keep task-id one-hot [36:39] intact
+        ablate_dim = 36
 
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
@@ -225,7 +210,6 @@ def main():
         if state_joints.shape[0] != T:
             raise SystemExit(f"state_joints rows {state_joints.shape[0]} != T={T}")
 
-        # hands-in: verify [36:39] is a clean one-hot matching this episode's task.
         if args.hands_in:
             if S != 39:
                 raise SystemExit(f"[VALIDATION FAIL] hands-in expects 39-dim state, got {S}")
@@ -259,7 +243,6 @@ def main():
             meta=meta,
         )
 
-        # Reload + assert contract.
         d = np.load(path, allow_pickle=True)
         for k in ["pred_action", "gt_action", "pred_action_ablated", "state_joints"]:
             if d[k].dtype != np.float32:
@@ -281,7 +264,6 @@ def main():
     for task, e, T, capped, lm, am in summary:
         log.info("  ep%-3d %-28s T=%-5d%s  motion_token_MSE=%.6f  ablated_MSE=%.6f",
                  e, task, T, " CAP" if capped else "   ", lm, am)
-
 
 if __name__ == "__main__":
     main()

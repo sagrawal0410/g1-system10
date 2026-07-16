@@ -60,11 +60,7 @@ ACTION_LAYOUT_PATH = os.environ.get(
     str(Path.home() / "g1_sonic_system1" / "results" / "action_layout.json"),
 )
 
-# Hand-verified fallback (gr00t/configs/data/embodiment_configs.py,
-# `unitree_g1_sonic` entry: action modality_keys order is
-# [motion_token(64), left_hand_joints(7), right_hand_joints(7)]).
 _FALLBACK_BLOCKS = {"latent": (0, 64), "left_hand": (64, 71), "right_hand": (71, 78)}
-
 
 def _load_blocks() -> dict[str, tuple[int, int]]:
     import json
@@ -114,7 +110,6 @@ def _load_blocks() -> dict[str, tuple[int, int]]:
                 return {}
         return o
 
-    # REAL Phase-0.5 schema: action.block_layout is a list of block dicts.
     action_sec = d.get("action") if isinstance(d.get("action"), dict) else {}
     candidates = [
         action_sec.get("block_layout"),
@@ -153,10 +148,8 @@ def _load_blocks() -> dict[str, tuple[int, int]]:
     )
     return dict(_FALLBACK_BLOCKS)
 
-
 _BLOCKS = _load_blocks()
 logging.info("Per-block loss logging active with blocks: %s", _BLOCKS)
-
 
 def _patch_trainer() -> None:
     import torch
@@ -178,8 +171,8 @@ def _patch_trainer() -> None:
                 and "action_mask" in outputs
             )
             if should_log:
-                action_loss = outputs["action_loss"].detach()  # (B, T, D) elementwise masked-MSE
-                action_mask = outputs["action_mask"].detach()  # (B, T, D)
+                action_loss = outputs["action_loss"].detach()
+                action_mask = outputs["action_mask"].detach()
                 log_dict = {}
                 for name, (s, e) in _BLOCKS.items():
                     block_loss = action_loss[..., s:e]
@@ -207,7 +200,6 @@ def _patch_trainer() -> None:
         "Patched Gr00tTrainer.compute_loss for per-block (latent/left_hand/right_hand) "
         "W&B loss logging. Training objective/gradients are unchanged."
     )
-
 
 def _force_ddp() -> None:
     """Force config.training.use_ddp=True so the HF Trainer uses plain DDP
@@ -252,17 +244,12 @@ def _force_ddp() -> None:
     exp.run = run
     logging.info("Patched experiment.run to force DDP (DeepSpeed disabled).")
 
-
 _patch_trainer()
 
 if __name__ == "__main__":
     import runpy
     import gr00t.experiment.launch_finetune as lf
 
-    # Must patch experiment.run BEFORE runpy re-imports it inside launch_finetune.
     _force_ddp()
 
-    # Re-exec the upstream script's own __main__ logic (tyro CLI parsing +
-    # config building + run(config)) with our patches already applied. sys.argv
-    # is untouched, so every launch_finetune.py flag works identically.
     runpy.run_path(lf.__file__, run_name="__main__")

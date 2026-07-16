@@ -34,7 +34,6 @@ import pandas as pd
 
 HELD_OUT_VIDEO_EPS = {0, 2, 16}
 
-
 def compute_weights(progress: np.ndarray, chunk: int, mu: float, sigma: float,
                     kappa: float, eps: float) -> np.ndarray:
     L = len(progress)
@@ -47,7 +46,6 @@ def compute_weights(progress: np.ndarray, chunk: int, mu: float, sigma: float,
     mod = (delta >= 0) & (delta <= kappa)
     w[mod] = soft[mod]
     return w, delta
-
 
 def main():
     ap = argparse.ArgumentParser()
@@ -63,7 +61,7 @@ def main():
 
     df = pd.read_parquet(args.progress_parquet)
     enc = json.loads(Path(args.encoded_mapping).read_text())["episodes"]
-    enc_sorted = sorted(enc, key=lambda e: e["episode_index"])  # 0..18
+    enc_sorted = sorted(enc, key=lambda e: e["episode_index"])
 
     video_eps = sorted(int(e) for e in df["episode_index"].unique())
     print(f"[map] video train episodes present: {video_eps}")
@@ -71,13 +69,11 @@ def main():
     assert len(video_eps) == len(enc_sorted), \
         f"count mismatch: {len(video_eps)} video vs {len(enc_sorted)} encoded"
 
-    # per-episode progress arrays (frame-ordered)
     prog_by_video = {}
     for vep in video_eps:
         sub = df[df["episode_index"] == vep].sort_values("frame_index")
         prog_by_video[vep] = sub["progress_sparse"].to_numpy(dtype=np.float64)
 
-    # verify 1:1 length match under the ordering assumption, build video->encoded
     vid2enc = {}
     for enc_ep, vep in zip(enc_sorted, video_eps):
         Lv = len(prog_by_video[vep])
@@ -87,7 +83,6 @@ def main():
         vid2enc[vep] = int(enc_ep["episode_index"])
     print(f"[map] video->encoded episode map: {vid2enc}")
 
-    # global delta stats across all frames (all episodes)
     all_delta = []
     for vep in video_eps:
         p = prog_by_video[vep]
@@ -152,7 +147,6 @@ def main():
     print(f"histogram [0..1]/10 : {report['histogram_bins']}")
     print(f"\nwrote weights -> {args.out_weights}")
     print(f"wrote report  -> {args.out_report}")
-
 
 if __name__ == "__main__":
     main()

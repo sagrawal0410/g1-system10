@@ -8,7 +8,6 @@ decode of the first + a middle frame. Exit 0 only if torchcodec decodes.
 import subprocess
 import sys
 
-
 def ffprobe(path):
     try:
         out = subprocess.run(
@@ -25,7 +24,6 @@ def ffprobe(path):
     except Exception as e:
         print("  ffprobe error:", e)
 
-
 def torchcodec_decode(path):
     from torchcodec.decoders import VideoDecoder
     dec = VideoDecoder(path)
@@ -39,7 +37,6 @@ def torchcodec_decode(path):
     if mid is not None:
         print(f"  decoded frame[mid] shape={tuple(mid.shape)}")
     return True
-
 
 def main():
     paths = sys.argv[1:]
@@ -60,7 +57,6 @@ def main():
             print("  torchcodec DECODE FAILED:", repr(e))
     print("\nRESULT:", "ALL OK" if ok else "DECODE FAILURE")
     sys.exit(0 if ok else 1)
-
 
 if __name__ == "__main__":
     main()

@@ -34,7 +34,6 @@ import numpy as np
 
 from .layout import ActionLayout
 
-
 @dataclass
 class RerankConfig:
     K: int = 4
@@ -44,11 +43,10 @@ class RerankConfig:
     w_range: float = 1.0
     w_zscore: float = 0.5
     w_roundtrip: float = 1.0
-    body_smooth_scale: float = 1.0    # latent/body smoothness weight
-    hand_smooth_scale: float = 0.2    # hands allowed to snap (grasp) -> low penalty
+    body_smooth_scale: float = 1.0
+    hand_smooth_scale: float = 0.2
     fsq_clamp: tuple = (-0.625, 0.625)
     base_seed: int = 0
-
 
 @dataclass
 class RunningStats:
@@ -58,19 +56,16 @@ class RunningStats:
     lo: Optional[np.ndarray] = None
     hi: Optional[np.ndarray] = None
 
-
 def candidate_seed(step: int, k: int, base: int = 0, K: int = 4) -> int:
     """Deterministic per-(step,k) seed. NOT a fixed reused seed -- each candidate
     of each replan gets its own sampling seed so best-of-N sees real diversity."""
     return int((base * 1_000_003 + step * (K + 1) + k) & 0x7FFFFFFF)
-
 
 def _msq_diff(x: np.ndarray, n: int) -> float:
     if x.shape[0] <= n:
         return 0.0
     d = np.diff(x, n=n, axis=0)
     return float(np.mean(d ** 2))
-
 
 def candidate_cost(
     candidate: np.ndarray,
@@ -92,16 +87,13 @@ def candidate_cost(
         xb = x[:, sl]
         smooth = cfg.hand_smooth_scale if b.is_hand else cfg.body_smooth_scale
 
-        # boundary discontinuity
         if prev_last is not None:
             pl = np.asarray(prev_last, dtype=np.float64)[sl]
             bd["boundary"] += smooth * float(np.mean((xb[0] - pl) ** 2))
 
-        # velocity / acceleration
         bd["velocity"] += smooth * _msq_diff(xb, 1)
         bd["accel"] += smooth * _msq_diff(xb, 2)
 
-        # range penalty
         if b.is_latent:
             lo, hi = cfg.fsq_clamp
             over = np.maximum(0.0, np.abs(xb) - max(abs(lo), abs(hi)))
@@ -111,14 +103,11 @@ def candidate_cost(
             over = np.maximum(0.0, xb - hi_b) + np.maximum(0.0, lo_b - xb)
             bd["range"] += float(np.mean(over ** 2))
 
-    # z-score (whole-vector, vs running executed stats)
     if stats is not None:
         std = np.where(stats.std < 1e-6, 1.0, stats.std)
         z = (x - stats.mean[None, :]) / std[None, :]
         bd["zscore"] = float(np.mean(z ** 2))
 
-    # SONIC roundtrip term (System-0-native): decode latent -> pose, penalize
-    # pose-space jerk + joint-limit infeasibility.
     if decoder is not None and len(layout.latent_blocks) == 1:
         lb = layout.latent_blocks[0].slice
         decoder.reset()
@@ -140,7 +129,6 @@ def candidate_cost(
     )
     return float(total), bd
 
-
 def rerank(
     candidates: list[np.ndarray],
     layout: ActionLayout,
@@ -159,7 +147,6 @@ def rerank(
         breaks.append(bd)
     best = int(np.argmin(costs))
     return {"best_index": best, "costs": costs, "breakdowns": breaks, "best_cost": costs[best]}
-
 
 def best_of_n(
     predict_fn: Callable[[int], np.ndarray],
@@ -183,13 +170,6 @@ def best_of_n(
     res["seeds"] = seeds
     return res
 
-
-# ---------------------------------------------------------------------------
-# ORACLE (verbatim rule): selecting candidates by closeness to held-out GT
-# actions is allowed ONLY as an explicitly-labeled "oracle best-of-K"
-# upper-bound row, NEVER as the method. This function name and its docstring
-# make that explicit; callers must surface results as "oracle" only.
-# ---------------------------------------------------------------------------
 def oracle_best_of_k(candidates: list[np.ndarray], gt_chunk: np.ndarray) -> dict:
     """UPPER-BOUND ONLY. Picks the candidate closest (MSE) to the held-out
     ground-truth chunk. This is NOT a deployable policy -- it peeks at GT. Report

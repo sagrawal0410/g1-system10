@@ -71,7 +71,6 @@ for _cam in CAMS:
         "names": ["height", "width", "channels"],
     }
 
-
 def find_sessions(raw_root: Path):
     """Return sorted [(task, session_name, session_dir)] deterministically."""
     out = []
@@ -85,28 +84,25 @@ def find_sessions(raw_root: Path):
                 out.append((task, sess, sdir))
     return out
 
-
 def load_session_parquet(sdir: Path) -> pd.DataFrame | None:
     files = sorted(glob.glob(str(sdir / "data" / "chunk-*" / "file-*.parquet")))
     if not files:
         return None
     return pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
 
-
 def session_instruction(sdir: Path, df: pd.DataFrame) -> str:
     tp = sdir / "meta" / "tasks.parquet"
     if tp.exists():
         tdf = pd.read_parquet(tp)
         if "task" in tdf.columns and len(tdf) > 0:
-            # Map the (single) task_index used in this session to its string.
+
             if "task_index" in df.columns and "task_index" in tdf.columns:
                 ti = int(df["task_index"].iloc[0])
                 row = tdf[tdf["task_index"] == ti]
                 if len(row) > 0:
                     return str(row["task"].iloc[0])
             return str(tdf["task"].iloc[0])
-    return sdir.parent.name  # fall back to task folder name
-
+    return sdir.parent.name
 
 def main():
     ap = argparse.ArgumentParser()
@@ -117,7 +113,7 @@ def main():
     ap.add_argument("--limit-episodes", type=int, default=0, help="debug: stop after N episodes (0=all)")
     args = ap.parse_args()
 
-    import decord  # noqa: F401  (in lerobot env)
+    import decord
     from lerobot.datasets import LeRobotDataset, LeRobotDatasetMetadata
 
     raw_root = Path(args.raw_root)
@@ -169,8 +165,8 @@ def main():
         import decord
 
         n = len(df)
-        tok = np.stack(df[TOKEN_COL].to_numpy()).astype(np.float32)      # (n,64)
-        rqc = np.stack(df[STATE_COL].to_numpy()).astype(np.float32)      # (n,36)
+        tok = np.stack(df[TOKEN_COL].to_numpy()).astype(np.float32)
+        rqc = np.stack(df[STATE_COL].to_numpy()).astype(np.float32)
         assert tok.shape == (n, TOKEN_DIM), f"{sess}: token shape {tok.shape}"
         assert rqc.shape == (n, STATE_DIM), f"{sess}: state shape {rqc.shape}"
         assert np.isfinite(tok).all() and np.isfinite(rqc).all(), f"{sess}: non-finite values"
@@ -190,7 +186,7 @@ def main():
                 "task": instr,
             }
             for cam in CAMS:
-                frame[f"observation.images.{cam}"] = readers[cam][i].asnumpy()  # HWC uint8
+                frame[f"observation.images.{cam}"] = readers[cam][i].asnumpy()
             ds.add_frame(frame)
         ds.save_episode()
 
@@ -211,7 +207,6 @@ def main():
 
     ds.finalize()
 
-    # Sidecar mapping for shared eval_split alignment.
     with open(out_root / "episode_mapping.json", "w") as f:
         json.dump({
             "repo_id": args.repo_id,
@@ -234,7 +229,6 @@ def main():
         for t, s, r in skipped:
             log.info("   skip %s/%s (%s)", t, s, r)
 
-    # Validate.
     meta = LeRobotDatasetMetadata(args.repo_id, root=str(out_root))
     log.info("VALIDATE: total_episodes=%d total_frames=%d features_action_shape=%s",
              meta.total_episodes, meta.total_frames, meta.features["action"]["shape"])
@@ -247,7 +241,6 @@ def main():
             if not vp.exists():
                 raise SystemExit(f"missing video ep {e} {vk}: {vp}")
     log.info("VALIDATE OK: all parquet + video files present for %d episodes.", meta.total_episodes)
-
 
 if __name__ == "__main__":
     main()

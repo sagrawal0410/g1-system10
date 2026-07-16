@@ -6,25 +6,22 @@ import numpy as np
 from phase_d.layout import load_layout
 from ._common import synthetic_layout, real_layout_path
 
-
 def test_synthetic_layout_tiles_and_classifies():
     lay = synthetic_layout()
     assert lay.total_dim == 78
     assert lay.chunk_length == 40
-    # latent block is discrete/token; hands are continuous
+
     assert [b.name for b in lay.latent_blocks] == ["motion_token"]
     assert {b.name for b in lay.hand_blocks} == {"left_hand_joints", "right_hand_joints"}
     assert lay.latent_indices() == list(range(0, 64))
     assert lay.hand_indices() == list(range(64, 78))
-    # validate() enforces gap-free tiling
-    lay.validate()
 
+    lay.validate()
 
 def test_latent_is_not_misclassified_as_hand():
     lay = synthetic_layout()
     for b in lay.blocks:
         assert not (b.is_latent and b.is_hand)
-
 
 def test_real_action_layout_loads_if_present():
     p = real_layout_path()

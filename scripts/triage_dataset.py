@@ -33,11 +33,9 @@ try:
 except ImportError:
     pd = None
 
-
 def load_json(path: Path):
     with open(path) as f:
         return json.load(f)
-
 
 def find_episode_dirs(task_dir: Path):
     """An 'episode dir' is any subdirectory containing meta/info.json."""
@@ -46,7 +44,6 @@ def find_episode_dirs(task_dir: Path):
         if p.is_dir() and (p / "meta" / "info.json").exists():
             out.append(p)
     return out
-
 
 def summarize_features(features: dict):
     obs_state, obs_image, obs_depth, actions, other = {}, {}, {}, {}, {}
@@ -69,11 +66,9 @@ def summarize_features(features: dict):
             other[key] = entry
     return obs_state, obs_image, obs_depth, actions, other
 
-
 def modality_semantic_groups(modality: dict, section: str):
     """Return {group_name: (start, end)} for 'state' or 'action' sections."""
     return {k: (v["start"], v["end"]) for k, v in modality.get(section, {}).items()}
-
 
 def triage_task(task_dir: Path):
     episode_dirs = find_episode_dirs(task_dir)
@@ -117,7 +112,7 @@ def triage_task(task_dir: Path):
         report["action_features"].update(actions)
 
         for cam_key, spec in obs_image.items():
-            shape = spec["shape"]  # [H, W, C]
+            shape = spec["shape"]
             report["cameras"][cam_key] = {
                 "resolution": f"{shape[1]}x{shape[0]}" if shape else "unknown",
                 "channels": shape[2] if shape and len(shape) > 2 else None,
@@ -150,7 +145,6 @@ def triage_task(task_dir: Path):
                 report["errors"].append(f"{ep_dir.name}: failed to read tasks.parquet ({e})")
 
     return report
-
 
 def print_report(report: dict):
     print(f"\n{'=' * 70}")
@@ -193,7 +187,6 @@ def print_report(report: dict):
         for grp, (s, e) in sorted(report["action_semantic_groups"].items(), key=lambda kv: kv[1]):
             print(f"    - {grp}: [{s}:{e}] (dim={e - s})")
 
-    # Determine action-space verdict per the runbook's rule.
     action_keys = set(report["action_features"].keys())
     has_joint = "action.robot_q_desired" in action_keys
     has_ee = "action.ee_action" in action_keys
@@ -217,7 +210,6 @@ def print_report(report: dict):
         print(f"\n  Errors/warnings:")
         for e in report["errors"]:
             print(f"    ! {e}")
-
 
 def main():
     ap = argparse.ArgumentParser()
@@ -258,7 +250,6 @@ def main():
     print(f"  codebase_version(s) : {sorted(versions)}")
     for r in all_reports:
         print(f"    - {r['task_name']}: {r['total_episodes']} episodes, {r['total_frames']} frames")
-
 
 if __name__ == "__main__":
     main()

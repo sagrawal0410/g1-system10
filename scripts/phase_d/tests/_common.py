@@ -8,11 +8,9 @@ import numpy as np
 
 from phase_d.layout import ActionLayout, Block, load_layout
 
-# FSQ grid used by the tests
 FSQ_STEP = 0.0625
 FSQ_CLAMP = (-0.625, 0.625)
 FSQ_GRID = np.round(np.arange(-0.625, 0.625 + 1e-9, FSQ_STEP) / FSQ_STEP) * FSQ_STEP
-
 
 def synthetic_layout(hand_dim: int = 7) -> ActionLayout:
     """78-dim (or variable-hand) synthetic layout matching the real schema:
@@ -33,7 +31,6 @@ def synthetic_layout(hand_dim: int = 7) -> ActionLayout:
     lay.validate()
     return lay
 
-
 def real_layout_path() -> Path | None:
     """Locate results/action_layout.json relative to the repo, if present."""
     here = Path(__file__).resolve()
@@ -46,15 +43,13 @@ def real_layout_path() -> Path | None:
         return Path(env)
     return None
 
-
 def on_grid(x: np.ndarray, step: float = FSQ_STEP, atol: float = 1e-6) -> bool:
     x = np.asarray(x, dtype=np.float64)
     return bool(np.all(np.abs(x / step - np.round(x / step)) < atol))
 
-
 def make_token_chunk(T: int, D_latent: int, rng, on_grid_vals: bool = True) -> np.ndarray:
     """A smooth-ish token chunk on the FSQ grid."""
-    base = rng.integers(-6, 7, size=D_latent) * FSQ_STEP  # multiples of 1/16 within +/-0.375
+    base = rng.integers(-6, 7, size=D_latent) * FSQ_STEP
     drift = np.cumsum(rng.integers(-1, 2, size=(T, D_latent)) * FSQ_STEP, axis=0)
     chunk = np.clip(base[None, :] + drift, FSQ_CLAMP[0], FSQ_CLAMP[1])
     if on_grid_vals:

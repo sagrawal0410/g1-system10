@@ -47,24 +47,21 @@ import numpy as np
 from .layout import ActionLayout
 from .fsq import fsq_project_values
 
-
 @dataclass
 class StitchConfig:
-    freeze: int = 3               # steps pinned to previous plan (2-4)
-    blend_len: int = 20           # linear-blend overlap length (16-24)
-    latent_strategy: str = "newest_only"  # newest_only | decoded_pose | fsq_snap_blend
-    hand_alpha_power: float = 0.5  # hand_alpha = alpha ** power (weak blend)
+    freeze: int = 3
+    blend_len: int = 20
+    latent_strategy: str = "newest_only"
+    hand_alpha_power: float = 0.5
     snap_latent_to_grid: bool = True
     fsq_step: float = 0.0625
     fsq_clamp: tuple = (-0.625, 0.625)
 
-
 @dataclass
 class StitchResult:
-    actions: np.ndarray                       # [T, total_dim] stitched action chunk
-    body_pose_override: Optional[np.ndarray] = None  # [T, body_dim] (decoded_pose only; NaN outside overlap)
+    actions: np.ndarray
+    body_pose_override: Optional[np.ndarray] = None
     latent_strategy: str = "newest_only"
-
 
 def _alpha_ramp(overlap: int, freeze: int, blend_len: int) -> np.ndarray:
     """alpha[i] in [0,1] over the overlap region: 0 while frozen, linear ramp
@@ -78,7 +75,6 @@ def _alpha_ramp(overlap: int, freeze: int, blend_len: int) -> np.ndarray:
         else:
             a[i] = 1.0
     return a
-
 
 def rtc_style_stitch(
     new_chunk: np.ndarray,
@@ -118,9 +114,8 @@ def rtc_style_stitch(
         return StitchResult(actions=out, latent_strategy=cfg.latent_strategy)
 
     freeze = min(cfg.freeze, overlap)
-    alpha = _alpha_ramp(overlap, freeze, cfg.blend_len)  # [overlap]
+    alpha = _alpha_ramp(overlap, freeze, cfg.blend_len)
 
-    # ---- per-block stitching over the overlap region ----------------------
     for b in layout.blocks:
         sl = b.slice
         prev_b = prev_overlap[:overlap, sl]
@@ -128,7 +123,7 @@ def rtc_style_stitch(
 
         if b.is_latent:
             if cfg.latent_strategy in ("newest_only", "decoded_pose"):
-                # freeze to prev, then newest (hard switch) -> always on-grid
+
                 merged = new_b.copy()
                 merged[:freeze] = prev_b[:freeze]
             elif cfg.latent_strategy == "fsq_snap_blend":
@@ -142,15 +137,13 @@ def rtc_style_stitch(
             a = (alpha ** cfg.hand_alpha_power)[:, None]
             out[:overlap, sl] = (1.0 - a) * prev_b + a * new_b
         else:
-            # generic continuous block -> normal linear blend
+
             a = alpha[:, None]
             out[:overlap, sl] = (1.0 - a) * prev_b + a * new_b
 
-    # snap executed latent to grid (guards off-grid raw predictions)
     if latent_idx.size:
         out[:, latent_idx] = _snap(out[:, latent_idx])
 
-    # ---- decoded-pose blending (optional, needs decoder) ------------------
     if cfg.latent_strategy == "decoded_pose":
         if decoder is None:
             raise ValueError("latent_strategy='decoded_pose' requires a PoseDecoder")
@@ -167,7 +160,6 @@ def rtc_style_stitch(
         body_override[:overlap] = (1.0 - a) * pose_prev + a * pose_new
 
     return StitchResult(actions=out, body_pose_override=body_override, latent_strategy=cfg.latent_strategy)
-
 
 class RecedingHorizonStitcher:
     """Stateful driver: feed it a freshly predicted chunk each replan; it stitches
@@ -201,7 +193,7 @@ class RecedingHorizonStitcher:
             prev_overlap = self._prev_plan[self.execute :]
             res = rtc_style_stitch(new_chunk, prev_overlap, self.layout, self.cfg, self.decoder)
         self._prev_plan = res.actions
-        # executed slice
+
         ex = min(self.execute, res.actions.shape[0])
         exec_pose = None
         if res.body_pose_override is not None:

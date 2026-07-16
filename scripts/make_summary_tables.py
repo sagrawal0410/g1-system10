@@ -18,7 +18,6 @@ OUT.mkdir(parents=True, exist_ok=True)
 df = pd.read_csv(MASTER)
 agg = df[df["scope"] == "AGGREGATE"].copy()
 
-# policy display names + their matching base-proxy label
 POLICIES = [
     ("GR00T-A (hands-out)", "R1_handsout", "R0_base_handsout"),
     ("GR00T-B (hands-in)", "R1b_handsin", "R0_base_handsin"),
@@ -26,19 +25,15 @@ POLICIES = [
     ("ACT-B (hands-in)", "RA2_handsin", "R0_base_ACT_handsin"),
 ]
 
-
 def val(policy_label, config, block, metric):
     r = agg[(agg["policy"] == policy_label) & (agg["config"] == config) & (agg["block"] == block)]
     if not len(r) or metric not in r:
         return np.nan
     return float(r[metric].iloc[0])
 
-
 def rnd(x, n=4):
-    return round(x, n) if x == x and np.isfinite(x) else ""  # blank for NaN
+    return round(x, n) if x == x and np.isfinite(x) else ""
 
-
-# ---- gate_a_summary: base-proxy vs fine-tuned, headline metrics -------------
 rows = []
 for disp, ft, base in POLICIES:
     lat_base = val(base, "base", "motion_token", "mse")
@@ -59,7 +54,6 @@ for disp, ft, base in POLICIES:
 pd.DataFrame(rows).to_csv(OUT / "gate_a_summary.csv", index=False)
 print("wrote", OUT / "gate_a_summary.csv")
 
-# ---- phase_d_summary: plain vs D1 vs D2 (per policy) ------------------------
 rows = []
 for disp, ft, base in POLICIES:
     for config in ["plain", "D1", "D2"]:
@@ -81,7 +75,6 @@ for disp, ft, base in POLICIES:
 pd.DataFrame(rows).to_csv(OUT / "phase_d_summary.csv", index=False)
 print("wrote", OUT / "phase_d_summary.csv")
 
-# ---- per_task_summary: per-task headline for fine-tuned (plain) + base ------
 rows = []
 TASKS = ["bottle_cupnoodles_shelf", "cup_wipe_sponge_dryingrack", "floor_box_table"]
 for disp, ft, base in POLICIES:

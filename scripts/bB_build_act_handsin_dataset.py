@@ -45,17 +45,16 @@ STATE_COL = "observation.state.robot_q_current"
 PICO_COL = "action.hand_cmd_pico"
 CAMS = ["head_cam", "left_wrist_cam", "right_wrist_cam"]
 TOKEN_DIM = 64
-HAND_DIM = 14           # pico dims -> action[64:78]
+HAND_DIM = 14
 ROBOT_Q_DIM = 36
-N_TASKS = 3             # bottle, cup, floor  (one-hot)
-STATE_DIM = ROBOT_Q_DIM + N_TASKS   # 39
-ACTION_DIM = TOKEN_DIM + HAND_DIM   # 78
-CONT_OFFSET = TOKEN_DIM             # hand block starts at action index 64
+N_TASKS = 3
+STATE_DIM = ROBOT_Q_DIM + N_TASKS
+ACTION_DIM = TOKEN_DIM + HAND_DIM
+CONT_OFFSET = TOKEN_DIM
 IMG_H, IMG_W = 480, 640
 FPS = 30
 ROBOT_TYPE = "unitree_g1"
 
-# folder -> one-hot index (deterministic, task-invariant hardware id)
 FOLDER_ONEHOT = {
     "bottle_cupnoodles_shelf": 0,
     "cup_wipe_sponge_dryingrack": 1,
@@ -86,7 +85,6 @@ for _cam in CAMS:
         "names": ["height", "width", "channels"],
     }
 
-
 def find_sessions(raw_root: Path):
     out = []
     for task in sorted(os.listdir(raw_root)):
@@ -99,13 +97,11 @@ def find_sessions(raw_root: Path):
                 out.append((task, sess, sdir))
     return out
 
-
 def load_session_parquet(sdir: Path) -> pd.DataFrame | None:
     files = sorted(glob.glob(str(sdir / "data" / "chunk-*" / "file-*.parquet")))
     if not files:
         return None
     return pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
-
 
 def session_instruction(sdir: Path, df: pd.DataFrame) -> str:
     tp = sdir / "meta" / "tasks.parquet"
@@ -119,7 +115,6 @@ def session_instruction(sdir: Path, df: pd.DataFrame) -> str:
                     return str(row["task"].iloc[0])
             return str(tdf["task"].iloc[0])
     return sdir.parent.name
-
 
 def normalize_hand(pico_rows: np.ndarray, norm_entry: dict) -> np.ndarray:
     """pico_rows (n,14) -> normalized hand (n,14); active dims min-max to [0,1], inactive->0."""
@@ -139,7 +134,6 @@ def normalize_hand(pico_rows: np.ndarray, norm_entry: dict) -> np.ndarray:
         h[:, pd_idx] = 0.0 if rng <= 0 else np.clip((vals - lo) / rng, 0.0, 1.0)
     return h
 
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--raw-root", default="/lambdafs/shaurya/g1_sonic_system1/data/g1_raw_full")
@@ -150,7 +144,7 @@ def main():
     ap.add_argument("--limit-episodes", type=int, default=0)
     args = ap.parse_args()
 
-    import decord  # noqa: F401
+    import decord
     from lerobot.datasets import LeRobotDataset, LeRobotDatasetMetadata
 
     raw_root = Path(args.raw_root)
@@ -179,7 +173,7 @@ def main():
     ep_idx = 0
     included_tasks = {}
     skipped = []
-    instr_to_folder = {}  # instruction string -> folder (asserted consistent)
+    instr_to_folder = {}
 
     for task, sess, sdir in sessions:
         df = load_session_parquet(sdir)
@@ -209,15 +203,15 @@ def main():
         import decord
 
         n = len(df)
-        tok = np.stack(df[TOKEN_COL].to_numpy()).astype(np.float32)      # (n,64)
-        rqc = np.stack(df[STATE_COL].to_numpy()).astype(np.float32)      # (n,36)
-        pico = np.stack(df[PICO_COL].to_numpy()).astype(np.float32)      # (n,14)
+        tok = np.stack(df[TOKEN_COL].to_numpy()).astype(np.float32)
+        rqc = np.stack(df[STATE_COL].to_numpy()).astype(np.float32)
+        pico = np.stack(df[PICO_COL].to_numpy()).astype(np.float32)
         assert tok.shape == (n, TOKEN_DIM), f"{sess}: token {tok.shape}"
         assert rqc.shape == (n, ROBOT_Q_DIM), f"{sess}: state {rqc.shape}"
         assert pico.shape == (n, HAND_DIM), f"{sess}: pico {pico.shape}"
         assert np.isfinite(tok).all() and np.isfinite(rqc).all() and np.isfinite(pico).all(), f"{sess}: non-finite"
 
-        hand = normalize_hand(pico, HN[task])                            # (n,14) in [0,1], inactive 0
+        hand = normalize_hand(pico, HN[task])
         onehot = np.zeros((N_TASKS,), dtype=np.float32)
         onehot[FOLDER_ONEHOT[task]] = 1.0
 
@@ -259,9 +253,8 @@ def main():
 
     ds.finalize()
 
-    # ---- Derive DATASET task_index -> folder -> active continuous-hand dims ----
     meta = LeRobotDatasetMetadata(args.repo_id, root=str(out_root))
-    ti_series = meta.tasks["task_index"]  # index=task string, value=task_index
+    ti_series = meta.tasks["task_index"]
     mask_table = {}
     ti_to_folder = {}
     for task_str, ti in ti_series.items():
@@ -317,7 +310,6 @@ def main():
             if not vp.exists():
                 raise SystemExit(f"missing video ep {e} {vk}: {vp}")
     log.info("VALIDATE OK: all parquet + video present for %d episodes.", meta.total_episodes)
-
 
 if __name__ == "__main__":
     main()

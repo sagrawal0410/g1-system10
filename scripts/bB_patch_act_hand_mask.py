@@ -23,7 +23,6 @@ CFG = REPO / "configuration_act.py"
 MOD = REPO / "modeling_act.py"
 MARKER = "hand_active_mask"
 
-
 def patch_config(text: str) -> str:
     if MARKER in text:
         raise SystemExit("configuration_act.py already has hand_active_mask. Aborting.")
@@ -38,12 +37,10 @@ def patch_config(text: str) -> str:
     )
     return text.replace(anchor, addition, 1)
 
-
 def patch_model(text: str) -> str:
     if MARKER in text:
         raise SystemExit("modeling_act.py already has hand_active_mask. Aborting.")
 
-    # (a) ACTPolicy.__init__: load the per-task hand mask table.
     init_anchor = (
         "        super().__init__(config)\n"
         "        config.validate_features()\n"
@@ -80,7 +77,6 @@ def patch_model(text: str) -> str:
     )
     text = text.replace(init_anchor, init_new, 1)
 
-    # (b) ACTPolicy.forward: mask the hand-L1 to active dims when enabled.
     loss_anchor = (
         "            if extras[\"cont\"] is not None:\n"
         "                cont_target = batch[ACTION][..., le:]\n"
@@ -113,7 +109,6 @@ def patch_model(text: str) -> str:
     text = text.replace(loss_anchor, loss_new, 1)
     return text
 
-
 def main():
     for path, fn in [(CFG, patch_config), (MOD, patch_model)]:
         src = path.read_text()
@@ -126,7 +121,6 @@ def main():
         path.write_text(out)
         print(f"patched {path}  (backup: {bak})")
     print("OK: ACT hand_active_mask patch applied (default OFF).")
-
 
 if __name__ == "__main__":
     main()

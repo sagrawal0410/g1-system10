@@ -1,25 +1,4 @@
 #!/usr/bin/env bash
-# Phase A launcher: byte-for-byte copy of Isaac-GR00T's own
-# `examples/finetune.sh` (verified defaults: learning_rate=1e-4,
-# warmup_ratio=0.05, weight_decay=1e-5, save_total_limit=5, torchrun for
-# num_gpus>1), with exactly one change: it launches our
-# `launch_sft.py` wrapper instead of `gr00t/experiment/launch_finetune.py`
-# so per-block (latent/left_hand/right_hand) loss logging is active. Nothing
-# else about the upstream flag construction/defaults is touched.
-#
-# Run from inside the Isaac-GR00T repo (same requirement as the original
-# examples/finetune.sh), e.g.:
-#
-#   cd ~/g1_sonic_system1/repos/Isaac-GR00T
-#   source ~/miniconda3/etc/profile.d/conda.sh && conda activate groot
-#   NUM_GPUS=4 CUDA_VISIBLE_DEVICES=0,3,4,5 \
-#   bash ~/g1_sonic_system1/scripts/finetune_with_block_loss.sh \
-#     --base-model-path nvidia/GR00T-N1.7-3B \
-#     --dataset-path /path/to/encoded_dataset \
-#     --embodiment-tag UNITREE_G1_SONIC \
-#     --output-dir /path/to/output \
-#     --experiment-name g1-sonic-T1 \
-#     --max-steps 20000 --save-steps 1000
 
 set -x -euo pipefail
 
@@ -53,7 +32,7 @@ EXTRA_ARGS=()
 
 usage() {
     cat <<'EOF'
-Usage: bash finetune_with_block_loss.sh \
+Usage: bash finetune.sh \
   --base-model-path <path> \
   --dataset-path <path> \
   --embodiment-tag <tag> \
@@ -237,17 +216,10 @@ if [ "${#EXTRA_ARGS[@]}" -gt 0 ]; then
 fi
 
 if [ "$NUM_GPUS" = "1" ]; then
-    # Restrict to a single GPU so HF Trainer doesn't wrap the model in DataParallel,
-    # which crashes with a StopIteration error in the model's device property.
     export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
     exec python "${LAUNCH_CMD[@]}"
 fi
 
-# Under Slurm (separate allocations per job), use torchrun --standalone: it picks a
-# free rendezvous port automatically, so co-resident jobs can't collide on a fixed
-# --master_port. Slurm sets GPU visibility via --gpus-per-node, so we don't set
-# CUDA_VISIBLE_DEVICES here. TORCHRUN_STANDALONE=1 (set by the sbatch scripts) or the
-# presence of SLURM_JOB_ID selects this path.
 if [ "${TORCHRUN_STANDALONE:-0}" = "1" ] || [ -n "${SLURM_JOB_ID:-}" ]; then
     exec torchrun --standalone --nnodes=1 --nproc_per_node="$NUM_GPUS" "${LAUNCH_CMD[@]}"
 fi

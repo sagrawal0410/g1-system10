@@ -77,15 +77,6 @@ import numpy as np
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("eval_openloop")
 
-
-# --------------------------------------------------------------------------
-# Action layout (blocks) loading — reads the REAL layout from action_layout.json
-# rather than hard-coding indices. Falls back to the values we independently
-# verified from gr00t/configs/data/embodiment_configs.py's `unitree_g1_sonic`
-# entry (motion_token=64, left_hand_joints=7, right_hand_joints=7, chunk=40)
-# ONLY if the file is missing/unreadable, and loudly warns when it does.
-# --------------------------------------------------------------------------
-
 _FALLBACK_BLOCKS = {
     "latent": (0, 64),
     "left_hand": (64, 71),
@@ -94,12 +85,11 @@ _FALLBACK_BLOCKS = {
 _FALLBACK_TOTAL_DIM = 78
 _FALLBACK_CHUNK_LENGTH = 40
 
-
 @dataclass
 class ActionLayout:
     total_dim: int
     chunk_length: int
-    blocks: dict[str, tuple[int, int]]  # name -> (start, end) exclusive
+    blocks: dict[str, tuple[int, int]]
     state_keys: Optional[list[str]] = None
     latent_continuous: Optional[bool] = None
     source: str = "action_layout.json"
@@ -112,8 +102,7 @@ class ActionLayout:
                 f"but total_dim={self.total_dim}. Refusing to guess — fix action_layout.json "
                 f"or pass --force-fallback-layout if this is expected."
             )
-        # Cross-check against the embodiment config we verified by hand
-        # (gr00t/configs/data/embodiment_configs.py: unitree_g1_sonic).
+
         if self.total_dim != _FALLBACK_TOTAL_DIM:
             log.warning(
                 "action_layout.json total_dim=%d differs from the unitree_g1_sonic "
@@ -122,13 +111,11 @@ class ActionLayout:
                 self.total_dim,
             )
 
-
 def _first_present(d: dict, keys: list[str]) -> Any:
     for k in keys:
         if k in d:
             return d[k]
     return None
-
 
 def _parse_block_list(items: list) -> Optional[dict[str, tuple[int, int]]]:
     """Parse a LIST of block dicts, each like
@@ -152,11 +139,10 @@ def _parse_block_list(items: list) -> Optional[dict[str, tuple[int, int]]]:
         out[name] = (int(s), int(e))
     return out or None
 
-
 def _parse_blocks(d: dict) -> Optional[dict[str, tuple[int, int]]]:
     """Try several plausible schemas for the block-index section of
     action_layout.json. Returns None if nothing recognizable is found."""
-    # REAL schema (Phase 0.5 agent): action.block_layout is a list of dicts.
+
     action_sec = d.get("action")
     if isinstance(action_sec, dict):
         block_list = action_sec.get("block_layout") or action_sec.get("blocks")
@@ -164,13 +150,12 @@ def _parse_blocks(d: dict) -> Optional[dict[str, tuple[int, int]]]:
             parsed = _parse_block_list(block_list)
             if parsed is not None:
                 return parsed
-        # Or a dict-of-dicts nested under action.
+
         if isinstance(block_list, dict) and block_list:
             parsed = _parse_blocks_dict(block_list)
             if parsed is not None:
                 return parsed
 
-    # Top-level list schema.
     for key in ("block_layout", "blocks", "block_indices", "action_blocks"):
         v = d.get(key)
         if isinstance(v, list) and v:
@@ -182,7 +167,6 @@ def _parse_blocks(d: dict) -> Optional[dict[str, tuple[int, int]]]:
             if parsed is not None:
                 return parsed
 
-    # Alternative flat schema: separate top-level keys per block.
     alt_names = {
         "latent": ["latent_indices", "latent_block", "motion_token_indices"],
         "left_hand": ["left_hand_indices", "left_hand_block"],
@@ -201,7 +185,6 @@ def _parse_blocks(d: dict) -> Optional[dict[str, tuple[int, int]]]:
             return None
     return out or None
 
-
 def _parse_blocks_dict(raw: dict) -> Optional[dict[str, tuple[int, int]]]:
     out = {}
     for name, spec in raw.items():
@@ -217,7 +200,6 @@ def _parse_blocks_dict(raw: dict) -> Optional[dict[str, tuple[int, int]]]:
             return None
         out[name] = (int(s), int(e))
     return out or None
-
 
 def load_action_layout(path: str | Path) -> ActionLayout:
     path = Path(path)
@@ -249,8 +231,6 @@ def load_action_layout(path: str | Path) -> ActionLayout:
             f"Extend `_parse_blocks()` to handle this schema rather than guessing silently."
         )
 
-    # total_dim / chunk_length may live at top level OR under the "action" sub-dict
-    # (the real Phase-0.5 schema puts them under action.{total_dim,chunk_length}).
     action_sec = d.get("action") if isinstance(d.get("action"), dict) else {}
     total_dim = _first_present(d, ["total_action_dim", "total_dim", "action_dim"])
     if total_dim is None:
@@ -266,7 +246,6 @@ def load_action_layout(path: str | Path) -> ActionLayout:
         log.warning("No chunk_length key in %s; falling back to %d.", path, _FALLBACK_CHUNK_LENGTH)
         chunk_length = _FALLBACK_CHUNK_LENGTH
 
-    # expected obs / state keys: top level or under observation.*
     obs_sec = d.get("observation") if isinstance(d.get("observation"), dict) else {}
     state_keys = _first_present(d, ["expected_obs_keys", "state_keys", "obs_keys"])
     if state_keys is None:
@@ -283,13 +262,6 @@ def load_action_layout(path: str | Path) -> ActionLayout:
     layout.validate()
     return layout
 
-
-# --------------------------------------------------------------------------
-# eval_split.json loading — flexible over a few plausible shapes.
-# Normalizes to: dict[task_name] -> {"dataset_path": str|None, "episode_ids": [int,...]}
-# --------------------------------------------------------------------------
-
-
 def load_eval_split(
     path: str | Path, default_dataset_path: Optional[str] = None
 ) -> dict[str, dict[str, Any]]:
@@ -299,10 +271,6 @@ def load_eval_split(
 
     out: dict[str, dict[str, Any]] = {}
 
-    # REAL schema (Phase-0.5 build_eval_split for the encoded merged dataset):
-    #   {"eval": [{"episode_index": 0, "task": "bottle_...", "session": "..."}, ...],
-    #    "train_episode_indices": [...], "n_total": 22, ...}
-    # episode_index is an INTEGER row index into the FULL encoded dataset.
     if isinstance(d, dict) and isinstance(d.get("eval"), list) and d["eval"]:
         for rec in d["eval"]:
             if not isinstance(rec, dict):
@@ -321,15 +289,7 @@ def load_eval_split(
     if isinstance(d, dict) and "tasks" in d and isinstance(d["tasks"], dict):
         for task_name, spec in d["tasks"].items():
             ds_path = spec.get("dataset_path", default_dataset_path)
-            # NOTE: as of the Phase-0 `build_eval_split.py` script, episode
-            # identifiers are the raw *episode-session directory names*
-            # (e.g. "2026-07-06-09-24-03_bottle_cupnoodles_shelf") from the
-            # WBC data exporter's per-session LeRobotDataset layout, NOT
-            # plain integer row indices into one merged dataset. Keep
-            # whatever type/value is given here — resolution to an actual
-            # loader index happens in `resolve_episode_index()` at rollout
-            # time, once we know the shape of the final encoded/merged
-            # dataset the Phase 0.5 agent produces.
+
             ep_ids = (
                 spec.get("eval_episode_ids")
                 or spec.get("episode_ids")
@@ -342,13 +302,13 @@ def load_eval_split(
     if isinstance(d, dict) and all(
         isinstance(v, (list, tuple)) for v in d.values()
     ):
-        # {"task_name": [episode_ids, ...], ...}
+
         for task_name, ep_ids in d.items():
             out[task_name] = {"dataset_path": default_dataset_path, "episode_ids": list(ep_ids)}
         return out
 
     if isinstance(d, list):
-        # [{"task": ..., "episode_id": ..., "dataset_path": ...}, ...]
+
         for rec in d:
             task_name = rec.get("task") or rec.get("task_name")
             ds_path = rec.get("dataset_path", default_dataset_path)
@@ -364,36 +324,17 @@ def load_eval_split(
         f"{type(d)}). Extend `load_eval_split()` rather than guessing."
     )
 
-
-# --------------------------------------------------------------------------
-# Metric primitives
-# --------------------------------------------------------------------------
-
-
 def block_slice(traj: np.ndarray, block: tuple[int, int]) -> np.ndarray:
     s, e = block
     return traj[..., s:e]
-
-
-# The Phase 0.5 agent writes action_layout.json's block names; they are NOT
-# guaranteed to be exactly "latent"/"left_hand"/"right_hand". The embodiment
-# config's action modality_keys are actually "motion_token",
-# "left_hand_joints", "right_hand_joints", and — per the coordinator's
-# heads-up — the real hand blocks may be 12-dim (dex hand) or 2-dim (gripper)
-# rather than 7, possibly with different names. So classify blocks by
-# name-substring instead of assuming exact names, so grasp detection and
-# plotting attach to the right blocks regardless of the layout's naming.
-
 
 def is_latent_block(name: str) -> bool:
     n = name.lower()
     return any(k in n for k in ("latent", "token", "motion")) and "hand" not in n
 
-
 def is_hand_block(name: str) -> bool:
     n = name.lower()
     return "hand" in n or "gripper" in n or "finger" in n
-
 
 def hand_side(name: str) -> str:
     n = name.lower()
@@ -403,7 +344,6 @@ def hand_side(name: str) -> str:
         return "right"
     return "unknown"
 
-
 def mean_squared_jerk(traj: np.ndarray) -> float:
     """Discrete 3rd-order difference (proportional to jerk for uniform dt),
     squared and averaged over time and dims. traj: (T, D)."""
@@ -412,11 +352,9 @@ def mean_squared_jerk(traj: np.ndarray) -> float:
     jerk = np.diff(traj, n=3, axis=0)
     return float(np.mean(jerk**2))
 
-
 def final_position_error(pred: np.ndarray, gt: np.ndarray) -> float:
     """L2 norm of the (pred - gt) vector at the last executed timestep."""
     return float(np.linalg.norm(pred[-1] - gt[-1]))
-
 
 def error_vs_horizon(
     pred: np.ndarray, gt: np.ndarray, execution_horizon: int
@@ -431,7 +369,6 @@ def error_vs_horizon(
         buckets[pos].append(np.mean((pred[t] - gt[t]) ** 2))
     return np.array([np.mean(b) if b else np.nan for b in buckets])
 
-
 def hand_closure_signal(hand_traj: np.ndarray) -> np.ndarray:
     """Scalar closure proxy per timestep: mean across the 7 hand-joint dims.
     Sign/scale convention is whatever the dataset uses; detect_close_events
@@ -439,12 +376,10 @@ def hand_closure_signal(hand_traj: np.ndarray) -> np.ndarray:
     so it's robust to the exact convention."""
     return hand_traj.mean(axis=-1)
 
-
 @dataclass
 class GraspEvent:
     step: int
-    kind: str  # "close" or "open"
-
+    kind: str
 
 def detect_close_events(
     signal: np.ndarray, low_q: float = 0.25, high_q: float = 0.75, min_gap: int = 3
@@ -480,7 +415,6 @@ def detect_close_events(
                 last_event_step = t
             state = "open"
     return events
-
 
 def match_events(
     gt_events: list[GraspEvent], pred_events: list[GraspEvent], tol_steps: int
@@ -519,7 +453,6 @@ def match_events(
             float(np.mean(timing_errors)) if timing_errors else float("nan")
         ),
     }
-
 
 def resolve_episode_index(loader, episode_id: Any, dataset_path: str) -> int:
     """Map an `eval_split.json` episode identifier to an integer row index
@@ -573,18 +506,11 @@ def resolve_episode_index(loader, episode_id: Any, dataset_path: str) -> int:
         f"any metrics from this dataset — do not guess silently."
     )
 
-
-# --------------------------------------------------------------------------
-# Rollout (requires the `groot` env / Isaac-GR00T importable)
-# --------------------------------------------------------------------------
-
-
 @dataclass
 class RolloutResult:
-    gt_action: np.ndarray  # (T, total_dim)
-    pred_action: np.ndarray  # (T, total_dim)
-    state_joints: np.ndarray  # (T, state_dim)
-
+    gt_action: np.ndarray
+    pred_action: np.ndarray
+    state_joints: np.ndarray
 
 def run_rollout(
     policy,
@@ -608,8 +534,6 @@ def run_rollout(
     state_keys = loader.modality_configs["state"].modality_keys
     action_keys = loader.modality_configs["action"].modality_keys
 
-    # Fail fast if execution_horizon doesn't fit the model's predicted chunk
-    # (confirmed API: gr00t/eval/open_loop_eval.py uses from_modality_config).
     PolicyHorizonSpec.from_modality_config(loader.modality_configs, n_action_steps=execution_horizon)
 
     modality_configs_no_action = deepcopy(loader.modality_configs)
@@ -656,12 +580,6 @@ def run_rollout(
         f"(episode {episode_idx})"
     )
     return RolloutResult(gt_action=gt_action, pred_action=pred_action, state_joints=state_joints)
-
-
-# --------------------------------------------------------------------------
-# Per-episode metrics -> long-format rows
-# --------------------------------------------------------------------------
-
 
 def compute_episode_metrics(
     result: RolloutResult,
@@ -723,12 +641,6 @@ def compute_episode_metrics(
 
     return rows
 
-
-# --------------------------------------------------------------------------
-# Plotting
-# --------------------------------------------------------------------------
-
-
 def make_overlay_plot(
     result: RolloutResult,
     layout: ActionLayout,
@@ -744,9 +656,6 @@ def make_overlay_plot(
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Classify blocks by name (see is_latent_block / is_hand_block) rather than
-    # assuming exact names, so plots attach correctly whatever the layout calls
-    # its blocks and however many hand dims it has.
     latent_items = [(n, b) for n, b in layout.blocks.items() if is_latent_block(n)]
     hand_items = [(n, b) for n, b in layout.blocks.items() if is_hand_block(n)]
 
@@ -789,18 +698,11 @@ def make_overlay_plot(
     plt.savefig(out_path, dpi=120)
     plt.close(fig)
 
-
-# --------------------------------------------------------------------------
-# Main
-# --------------------------------------------------------------------------
-
-
 def parse_checkpoint_arg(spec: str) -> tuple[str, str]:
     if "=" not in spec:
         raise argparse.ArgumentTypeError(f"--checkpoint expects LABEL=PATH, got: {spec}")
     label, path = spec.split("=", 1)
     return label, path
-
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -847,7 +749,6 @@ def main():
     if not args.checkpoint:
         raise SystemExit("Pass at least one --checkpoint LABEL=PATH")
 
-    # Imports that require the `groot` env.
     from gr00t.data.dataset.lerobot_episode_loader import LeRobotEpisodeLoader
     from gr00t.data.embodiment_tags import EmbodimentTag
     from gr00t.policy.gr00t_policy import Gr00tPolicy
@@ -889,7 +790,7 @@ def main():
                 result = run_rollout(
                     policy, loader, episode_idx, embodiment_tag, execution_horizon, args.steps
                 )
-                # Use the original (human-readable) episode identifier in outputs.
+
                 episode_label = raw_episode_id
                 rows = compute_episode_metrics(
                     result, layout, label, task, episode_label, execution_horizon, args.grasp_tol_steps
@@ -924,7 +825,6 @@ def main():
             writer.writeheader()
             writer.writerows(all_rows)
     log.info("Wrote %d metric rows to %s", len(all_rows), out_csv)
-
 
 if __name__ == "__main__":
     main()

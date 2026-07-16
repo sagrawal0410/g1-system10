@@ -28,9 +28,8 @@ VIDEO_KEYS = ["observation.images.head_cam", "observation.images.left_wrist_cam"
 FPS = 30
 ACTIVE_STD_THRESH = 1e-3
 
-# --- args ---
 hands_mode = "zero"; OUT = Path("/lambdafs/shaurya/g1_sonic_system1/data/g1_encoded_sonic")
-exclude = set()  # ORIGINAL (full-dataset) episode indices to drop (e.g. held-out eval eps)
+exclude = set()
 args = sys.argv[1:]
 for i, a in enumerate(args):
     if a == "--hands-mode": hands_mode = args[i + 1]
@@ -54,7 +53,6 @@ for t in TASKS:
     for d in sorted(glob.glob(f"{SRC}/{t}/*/")):
         ep_dirs.append((t, Path(d)))
 
-# ---- PASS 1 (pico mode): per-task per-dim min/max + active mask over hand_cmd_pico ----
 hand_norm = {}
 if hands_mode == "pico":
     for task in TASKS:
@@ -69,7 +67,7 @@ if hands_mode == "pico":
     print("hand normalization (active dims per task):",
           {t: hand_norm[t]["active_dims"] for t in TASKS})
 
-def norm_pico(task, pico):  # pico (T,14) -> (T,14) normalized, inactive=0
+def norm_pico(task, pico):
     hn = hand_norm[task]; mn = np.array(hn["min"], np.float32); mx = np.array(hn["max"], np.float32)
     out = np.zeros_like(pico)
     for d in hn["active_dims"]:
@@ -77,7 +75,6 @@ def norm_pico(task, pico):  # pico (T,14) -> (T,14) normalized, inactive=0
         out[:, d] = np.clip((pico[:, d] - mn[d]) / (rng if rng > 1e-9 else 1.0), 0.0, 1.0)
     return out.astype(np.float32)
 
-# ---- BUILD ----
 if OUT.exists(): shutil.rmtree(OUT)
 (OUT/"data"/"chunk-000").mkdir(parents=True)
 for vk in VIDEO_KEYS: (OUT/"videos"/"chunk-000"/vk).mkdir(parents=True)
@@ -86,11 +83,11 @@ for vk in VIDEO_KEYS: (OUT/"videos"/"chunk-000"/vk).mkdir(parents=True)
 task_to_idx = {t: i for i, t in enumerate(TASKS)}; task_desc = {}
 episodes_jsonl = []; mapping = []; gidx = 0; all_state = []; all_action = []
 e = -1
-for oi, (task, d) in enumerate(ep_dirs):   # oi = ORIGINAL (full-dataset) episode index
+for oi, (task, d) in enumerate(ep_dirs):
     if oi in exclude:
         print(f"  [skip original idx {oi}] {task}/{d.name} (held-out eval)")
         continue
-    e += 1                                  # e = NEW contiguous index in this (sub)set
+    e += 1
     df = pd.read_parquet(sorted(glob.glob(str(d/"data"/"chunk-*"/"file-*.parquet")))[0]); T = len(df)
     q = np.stack(df["observation.state.robot_q_current"].to_numpy()).astype(np.float32)
     tok = np.stack(df["action.token_state"].to_numpy()).astype(np.float32)
@@ -98,7 +95,7 @@ for oi, (task, d) in enumerate(ep_dirs):   # oi = ORIGINAL (full-dataset) episod
         hands = np.zeros((T, 14), np.float32)
     else:
         pico = np.stack(df["action.hand_cmd_pico"].to_numpy()).astype(np.float32)
-        hands = norm_pico(task, pico)  # (T,14): [0:7]=left, [7:14]=right
+        hands = norm_pico(task, pico)
     action = np.concatenate([tok, hands], axis=1).astype(np.float32)
     state = build_state(q)
     all_state.append(state); all_action.append(action)
@@ -122,7 +119,7 @@ with open(OUT/"meta"/"episodes.jsonl","w") as f:
 with open(OUT/"meta"/"tasks.jsonl","w") as f:
     for i in sorted(task_desc): f.write(json.dumps({"task_index": i, "task": task_desc[i]})+"\n")
 
-n_ep = len(mapping)  # number of episodes actually written (after exclusions)
+n_ep = len(mapping)
 per_task_counts = {t: sum(1 for m in mapping if m["task"] == t) for t in TASKS}
 print("per-task train-episode counts:", per_task_counts)
 src_info = json.load(open(sorted(glob.glob(f"{SRC}/{TASKS[0]}/*/meta/info.json"))[0]))
@@ -173,7 +170,6 @@ if thin:
         "-> expect weak generalization on this task (documented data limitation, not a bug).")
 json.dump(map_out, open(OUT/"meta"/"episode_mapping.json","w"), indent=2)
 
-# hand normalization sidecar (pico mode): per-task min/max + active masks, mapped to action indices
 if hands_mode == "pico":
     hm = {"note":"action.left_hand_joints[64:71]<-pico[0:7], right_hand_joints[71:78]<-pico[7:14]. "
                  "Per-task per-dim min-max to [0,1] on active dims; inactive->0. To invert: x = norm*(max-min)+min. "

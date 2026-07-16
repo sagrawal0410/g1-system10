@@ -58,9 +58,6 @@ from pathlib import Path
 
 import numpy as np
 
-# ---------------------------------------------------------------------------
-# Defaults (paths on the cluster; override via CLI)
-# ---------------------------------------------------------------------------
 HOME = os.path.expanduser("~")
 PROJ = f"{HOME}/g1_sonic_system1"
 DEF_DATASET = "/lambdafs/shaurya/g1_sonic_system1/data/g1_encoded_sonic"
@@ -72,24 +69,18 @@ DEF_SERVER_PY = f"{HOME}/miniconda3/envs/groot/bin/python"
 TOKEN_DIM = 64
 N_BODY = 29
 N_HIST = 10
-STATE_GROUPS = [  # (name, start, end) in the flat 46-dim observation.state
+STATE_GROUPS = [
     ("left_leg", 0, 6), ("right_leg", 6, 12), ("waist", 12, 15),
     ("left_arm", 15, 22), ("right_arm", 22, 29), ("left_hand", 29, 36),
     ("right_hand", 36, 43), ("projected_gravity", 43, 46),
 ]
 
-
 def green(x):
     print(f"\033[92m{x}\033[0m", flush=True)
 
-
-# ---------------------------------------------------------------------------
-# Scheduling helpers -- IDENTICAL to gear_sonic/utils/inference/vla_utils.py
-# ---------------------------------------------------------------------------
 def calculate_latency_compensated_index(inference_delay, control_freq, action_horizon):
     raw_index = np.round(inference_delay * control_freq)
     return int(np.clip(raw_index, 0, action_horizon - 1))
-
 
 def should_trigger_new_inference(cached_chunk_exists, inference_thread_running,
                                  time_since_last_inference, inference_interval):
@@ -99,13 +90,6 @@ def should_trigger_new_inference(cached_chunk_exists, inference_thread_running,
         return False
     return time_since_last_inference >= inference_interval
 
-
-# ---------------------------------------------------------------------------
-# Minimal PolicyClient -- wire-compatible with gr00t.policy.server_client
-# (MsgSerializer). Faithful copy of the chained msgpack_numpy encode/decode so
-# it interoperates with a real PolicyServer without importing gr00t (absent in
-# the `sonic` decoder env). Only ping/get_action/reset/kill are needed.
-# ---------------------------------------------------------------------------
 class MiniPolicyClient:
     def __init__(self, host="localhost", port=5555, timeout_ms=60000):
         import msgpack_numpy as mnp
@@ -174,10 +158,6 @@ class MiniPolicyClient:
         except Exception:
             pass
 
-
-# ---------------------------------------------------------------------------
-# Dataset loading (open-loop obs)
-# ---------------------------------------------------------------------------
 def load_episode(dataset_path, episode_index):
     import pyarrow.parquet as pq
     import glob
@@ -185,9 +165,9 @@ def load_episode(dataset_path, episode_index):
     if not cand:
         raise FileNotFoundError(f"episode {episode_index} parquet not found under {dataset_path}")
     tbl = pq.read_table(cand[0])
-    state = np.asarray(tbl.column("observation.state").to_pylist(), dtype=np.float32)  # (T,46)
-    action = np.asarray(tbl.column("action").to_pylist(), dtype=np.float32)            # (T,78) GT
-    # prompt
+    state = np.asarray(tbl.column("observation.state").to_pylist(), dtype=np.float32)
+    action = np.asarray(tbl.column("action").to_pylist(), dtype=np.float32)
+
     prompt = "demo"
     ep_meta = Path(dataset_path) / "meta" / "episodes.jsonl"
     if ep_meta.exists():
@@ -197,7 +177,6 @@ def load_episode(dataset_path, episode_index):
                 prompt = d["tasks"][0]
                 break
     return state, action, prompt, cand[0]
-
 
 def load_head_cam_frame(dataset_path, episode_index, frame_index, cache={}):
     """Decode one head_cam frame (open-loop dataset camera). Cached per episode."""
@@ -209,7 +188,7 @@ def load_head_cam_frame(dataset_path, episode_index, frame_index, cache={}):
         cache[key] = vids[0] if vids else None
     path = cache[key]
     if path is None:
-        return np.zeros((480, 640, 3), np.uint8)  # placeholder; server still validates shape
+        return np.zeros((480, 640, 3), np.uint8)
     import cv2
     cap = cv2.VideoCapture(path)
     cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_index))
@@ -219,20 +198,15 @@ def load_head_cam_frame(dataset_path, episode_index, frame_index, cache={}):
         return np.zeros((480, 640, 3), np.uint8)
     return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB).astype(np.uint8)
 
-
 def build_observation(state_row, head_img, prompt):
     """(B=1,T=1) observation dict matching the unitree_g1_sonic modality config."""
     obs = {"video": {}, "state": {}, "language": {}}
-    obs["video"]["ego_view"] = head_img[None, None].astype(np.uint8)  # (1,1,H,W,3)
+    obs["video"]["ego_view"] = head_img[None, None].astype(np.uint8)
     for name, s, e in STATE_GROUPS:
-        obs["state"][name] = state_row[s:e][None, None].astype(np.float32)  # (1,1,D)
+        obs["state"][name] = state_row[s:e][None, None].astype(np.float32)
     obs["language"]["annotation.human.task_description"] = [[prompt]]
     return obs
 
-
-# ---------------------------------------------------------------------------
-# SONIC decoder closed-loop (mujoco/kinematic backend)
-# ---------------------------------------------------------------------------
 class DecoderClosedLoop:
     """Closed-loop rollout of model_decoder.onnx (994->29) with a simple
     first-order actuator-lag tracking model (NO contact physics).
@@ -258,7 +232,7 @@ class DecoderClosedLoop:
         assert indim == 994, f"decoder input dim {indim} != 994"
         self.control_freq = control_freq
         self.gain = float(track_gain)
-        self.clip = float(clip)          # joint-target clamp (rad); keeps the no-physics loop finite
+        self.clip = float(clip)
         self.reset()
 
     def reset(self):
@@ -267,12 +241,11 @@ class DecoderClosedLoop:
         self.hist_act = collections.deque([np.zeros(N_BODY, np.float32)] * N_HIST, maxlen=N_HIST)
         self.measured = np.zeros(N_BODY, np.float32)
         self.grav = np.array([0, 0, -1], np.float32)
-        self.max_abs = 0.0               # peak |target| seen -> divergence indicator
+        self.max_abs = 0.0
         self.clipped_steps = 0
 
     def step(self, token):
-        # deploy obs order: token | base_ang_vel_10f | body_pos_10f | body_vel_10f
-        #                   | last_act_10f | gravity_10f  (= 994)
+
         ba = np.zeros(3 * N_HIST, np.float32)
         bp = np.concatenate(list(self.hist_pos))
         bv = np.concatenate(list(self.hist_vel))
@@ -281,10 +254,10 @@ class DecoderClosedLoop:
         obs = np.concatenate([token.astype(np.float32), ba, bp, bv, la, gd])[None]
         raw = self.sess.run(None, {self.iname: obs.astype(np.float32)})[0].ravel().astype(np.float32)
         self.max_abs = max(self.max_abs, float(np.abs(raw).max()))
-        act = np.clip(raw, -self.clip, self.clip).astype(np.float32)   # keep no-physics loop finite
+        act = np.clip(raw, -self.clip, self.clip).astype(np.float32)
         if np.any(np.abs(raw) > self.clip):
             self.clipped_steps += 1
-        # advance the first-order actuator toward the previous command
+
         prev_meas = self.measured.copy()
         cmd_prev = self.hist_act[-1]
         self.measured = np.clip(prev_meas + self.gain * (cmd_prev - prev_meas),
@@ -295,10 +268,6 @@ class DecoderClosedLoop:
         self.hist_act.append(act.copy())
         return act
 
-
-# ---------------------------------------------------------------------------
-# Server autostart
-# ---------------------------------------------------------------------------
 def start_server(args, port):
     cmd = [args.server_python, "gr00t/eval/run_gr00t_server.py",
            "--embodiment-tag", args.embodiment_tag,
@@ -316,10 +285,6 @@ def start_server(args, port):
     proc = subprocess.Popen(cmd, cwd=args.isaac_gr00t_repo, stdout=logf, stderr=subprocess.STDOUT)
     return proc, logf
 
-
-# ---------------------------------------------------------------------------
-# Main hierarchy loop
-# ---------------------------------------------------------------------------
 def run_mujoco(args):
     os.makedirs(args.out_dir, exist_ok=True)
     print("=" * 78)
@@ -337,7 +302,6 @@ def run_mujoco(args):
     print(f"[data] episode {args.episode_index}: {T} frames, parquet={pq_path}")
     print(f"[data] prompt: {prompt[:90]}{'...' if len(prompt) > 90 else ''}")
 
-    # server
     proc = logf = None
     port = args.policy_port
     if args.autostart_server:
@@ -362,11 +326,10 @@ def run_mujoco(args):
     loop_period = 1.0 / args.action_publish_rate
     max_steps = args.max_steps if args.max_steps > 0 else min(T, 600)
 
-    # rollout logs
     ex_body, ex_hands, used_tokens, gt_tokens_at_step = [], [], [], []
     step_time, chunk_marks, latencies = [], [], []
 
-    cached_chunk = None           # dict of (T,dim) arrays for current chunk
+    cached_chunk = None
     chunk_index = 0
     last_inf_time = 0.0
     n_inferences = 0
@@ -378,8 +341,7 @@ def run_mujoco(args):
 
     for step in range(max_steps):
         t_start = time.monotonic()
-        # clock: real wall-clock in realtime mode, else a virtual 50 Hz sim clock
-        # so the 2.5 Hz inference schedule is honoured regardless of CPU speed.
+
         now = time.monotonic() if args.realtime else step * loop_period
 
         need_inf = should_trigger_new_inference(
@@ -402,7 +364,7 @@ def run_mujoco(args):
             rh = np.asarray(action.get("right_hand_joints", action.get("action.right_hand_joints")),
                             dtype=np.float32)
             if mt.ndim == 3:
-                mt, lh, rh = mt[0], lh[0], rh[0]           # (horizon, D)
+                mt, lh, rh = mt[0], lh[0], rh[0]
             cached_chunk = {"motion_token": mt, "left_hand_joints": lh, "right_hand_joints": rh}
             chunk_index = calculate_latency_compensated_index(
                 delay, args.action_publish_rate, args.action_horizon)
@@ -421,9 +383,9 @@ def run_mujoco(args):
         left = cached_chunk["left_hand_joints"][idx]
         right = cached_chunk["right_hand_joints"][idx]
 
-        body = decoder.step(token)                          # (29,) decoded body target
+        body = decoder.step(token)
         ex_body.append(body)
-        ex_hands.append(np.concatenate([left, right]).astype(np.float32))  # (14,)
+        ex_hands.append(np.concatenate([left, right]).astype(np.float32))
         used_tokens.append(token.copy())
         gt_tokens_at_step.append(gt_action[min(sim_frame, T - 1), :TOKEN_DIM].copy())
         step_time.append(step * loop_period)
@@ -461,16 +423,16 @@ def run_mujoco(args):
         control_freq=args.action_publish_rate,
         inference_rate=args.rate,
         action_horizon=args.action_horizon,
-        executed_body=ex_body,          # (N,29) decoded body targets (perfect-track)
-        executed_hands=ex_hands,        # (N,14) L(7)+R(7) hand joints
-        used_tokens=used_tokens,        # (N,64) tokens fed to decoder (policy output)
-        gt_tokens=gt_tokens_at_step,    # (N,64) dataset GT token at same frame
+        executed_body=ex_body,
+        executed_hands=ex_hands,
+        used_tokens=used_tokens,
+        gt_tokens=gt_tokens_at_step,
         step_time_s=np.asarray(step_time, np.float32),
         chunk_boundaries=np.asarray(chunk_marks, np.int64),
         inference_latencies_s=np.asarray(latencies, np.float32),
         n_inferences=n_inferences,
         track_gain=args.track_gain,
-        physics=False,                  # NO contact physics in this backend
+        physics=False,
     )
     summary = {
         "backend": "mujoco_kinematic",
@@ -504,7 +466,6 @@ def run_mujoco(args):
         _plot_rollout(args, ex_body, ex_hands, used_tokens, gt_tokens_at_step)
     return summary
 
-
 def _plot_rollout(args, ex_body, ex_hands, tokens, gt_tokens):
     import matplotlib
     matplotlib.use("Agg")
@@ -524,7 +485,6 @@ def _plot_rollout(args, ex_body, ex_hands, tokens, gt_tokens):
     out = os.path.join(args.out_dir, f"rollout_ep{args.episode_index}.png")
     fig.savefig(out, dpi=90)
     green(f"[plot] wrote {out}")
-
 
 def run_dataset_gt(args):
     """No-server GT-targets rollout: decode the held-out episode's OWN recorded
@@ -570,7 +530,6 @@ def run_dataset_gt(args):
         _plot_rollout(args, ex_body, ex_hands, used_tokens, used_tokens)
     return summary
 
-
 def run_isaaclab(args):
     msg = (
         "\n" + "=" * 78 + "\n"
@@ -588,7 +547,6 @@ def run_isaaclab(args):
     print(msg)
     raise SystemExit(3)
 
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -601,7 +559,7 @@ def main():
     ap.add_argument("--dataset-path", default=DEF_DATASET)
     ap.add_argument("--decoder-onnx", default=DEF_DECODER)
     ap.add_argument("--embodiment-tag", default="UNITREE_G1_SONIC")
-    # serving
+
     ap.add_argument("--policy-host", default="127.0.0.1")
     ap.add_argument("--policy-port", type=int, default=5551)
     ap.add_argument("--autostart-server", action="store_true",
@@ -614,7 +572,7 @@ def main():
     ap.add_argument("--device", default="cuda:7")
     ap.add_argument("--server-wait-s", type=float, default=180.0)
     ap.add_argument("--timeout-ms", type=int, default=120000)
-    # scheduling (repo defaults)
+
     ap.add_argument("--action-publish-rate", type=float, default=50.0)
     ap.add_argument("--rate", type=float, default=2.5, help="inference forward-pass rate (Hz)")
     ap.add_argument("--action-horizon", type=int, default=40)
@@ -623,7 +581,7 @@ def main():
                     help="first-order actuator-lag gain for the kinematic loop "
                          "(1.0=perfect track); mujoco backend only")
     ap.add_argument("--realtime", action="store_true", help="sleep to real 50Hz (default: fast)")
-    # output
+
     ap.add_argument("--out-dir", default=None)
     ap.add_argument("--plot", action="store_true")
     args = ap.parse_args()
@@ -640,7 +598,6 @@ def main():
         run_dataset_gt(args)
     else:
         run_mujoco(args)
-
 
 if __name__ == "__main__":
     main()

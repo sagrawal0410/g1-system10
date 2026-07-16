@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 DATASET = sys.argv[1] if len(sys.argv) > 1 else "/lambdafs/shaurya/g1_sonic_system1/data/g1_encoded_sonic"
-EP = int(sys.argv[2]) if len(sys.argv) > 2 else 1  # a train episode
+EP = int(sys.argv[2]) if len(sys.argv) > 2 else 1
 
 from gr00t.configs.data.embodiment_configs import MODALITY_CONFIGS
 from gr00t.data.dataset.lerobot_episode_loader import LeRobotEpisodeLoader

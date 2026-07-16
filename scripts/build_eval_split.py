@@ -19,13 +19,11 @@ from pathlib import Path
 
 SEED = 42
 
-
 def is_complete(ep_dir: Path) -> bool:
     videos_ok = (ep_dir / "videos").exists() and any((ep_dir / "videos").iterdir())
     stats_ok = (ep_dir / "meta" / "stats.json").exists()
     tasks_ok = (ep_dir / "meta" / "tasks.parquet").exists()
     return videos_ok and stats_ok and tasks_ok
-
 
 def main():
     data_root = Path(sys.argv[1]).expanduser().resolve()
@@ -71,7 +69,6 @@ def main():
         json.dump(result, f, indent=2)
     print(f"Wrote {out_path}")
     print(json.dumps(result, indent=2))
-
 
 if __name__ == "__main__":
     main()

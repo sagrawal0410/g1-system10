@@ -60,7 +60,6 @@ from typing import Optional
 
 import numpy as np
 
-# Canonical released decoder location (lambdafs). Overridable.
 DEFAULT_DECODER_ONNX = (
     "/lambdafs/shaurya/g1_sonic_system1/repos/GR00T-WholeBodyControl/"
     "gear_sonic_deploy/policy/release/model_decoder.onnx"
@@ -69,7 +68,6 @@ DEFAULT_DECODER_ONNX = (
 TOKEN_DIM = 64
 BODY_DIM = 29
 HISTORY = 10
-
 
 @dataclass
 class DecoderObsLayout:
@@ -92,7 +90,6 @@ class DecoderObsLayout:
             + self.last_actions_10f
         )
 
-
 class PoseDecoder:
     """Interface: turn a token chunk ``[T, token_dim]`` into a body-joint pose
     trajectory ``[T, body_dim]``. Implementations may be stateful (closed-loop);
@@ -101,12 +98,11 @@ class PoseDecoder:
     token_dim: int = TOKEN_DIM
     body_dim: int = BODY_DIM
 
-    def reset(self) -> None:  # pragma: no cover - trivial
+    def reset(self) -> None:
         pass
 
     def decode_chunk(self, token_chunk: np.ndarray) -> np.ndarray:
         raise NotImplementedError
-
 
 class LinearMockDecoder(PoseDecoder):
     """Deterministic, dependency-free stand-in for unit tests / no-onnxruntime
@@ -130,7 +126,6 @@ class LinearMockDecoder(PoseDecoder):
             x = x[None, :]
         pose = np.tanh(x @ self.W.T + self.b) * self.scale
         return pose.astype(np.float32)
-
 
 class SonicOnnxDecoder(PoseDecoder):
     """Real released SONIC decoder ONNX, driven with an autoregressive proprio
@@ -171,14 +166,13 @@ class SonicOnnxDecoder(PoseDecoder):
         self._sess = None
         self.reset()
 
-    # -- lazy session -------------------------------------------------------
     @property
     def session(self):
         if self._sess is None:
-            import onnxruntime as ort  # lazy
+            import onnxruntime as ort
 
             so = ort.SessionOptions()
-            so.intra_op_num_threads = 1  # CPU-only, be a good neighbour
+            so.intra_op_num_threads = 1
             so.inter_op_num_threads = 1
             self._sess = ort.InferenceSession(self.onnx_path, sess_options=so, providers=self.providers)
             self._in_name = self._sess.get_inputs()[0].name
@@ -193,7 +187,7 @@ class SonicOnnxDecoder(PoseDecoder):
         return self._sess
 
     def reset(self) -> None:
-        # history buffers, oldest-first (index 0 = oldest frame)
+
         h, b = self.history, self.body_dim
         self._pos_rel_hist = np.zeros((h, b))
         self._vel_hist = np.zeros((h, b))
@@ -247,14 +241,14 @@ class SonicOnnxDecoder(PoseDecoder):
                 action = action[self.joint_permutation]
             out[t] = action
             if self.mode == "autoregressive":
-                # feed output back (proxy for the closed loop; NOT physics -> unstable)
+
                 pos_rel = action - self.default_pose
                 vel = (action - self._last_pos) / self.dt
                 self._pos_rel_hist = self._push(self._pos_rel_hist, pos_rel)
                 self._vel_hist = self._push(self._vel_hist, vel)
                 self._act_hist = self._push(self._act_hist, action)
                 self._last_pos = action
-            # fixed_history: buffers stay at the reference set in reset()/set_reference()
+
         return out
 
     def set_reference(
@@ -279,7 +273,6 @@ class SonicOnnxDecoder(PoseDecoder):
             self.gravity_dir = np.asarray(gravity_dir, float)
         if base_ang_vel is not None:
             self.base_ang_vel = np.asarray(base_ang_vel, float)
-
 
 def make_decoder(kind: str = "onnx", **kwargs) -> PoseDecoder:
     """Factory. kind='onnx' -> SonicOnnxDecoder; kind='mock' -> LinearMockDecoder."""

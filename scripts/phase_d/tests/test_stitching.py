@@ -7,7 +7,6 @@ from phase_d.stitching import rtc_style_stitch, RecedingHorizonStitcher, StitchC
 from phase_d.sonic_decoder import LinearMockDecoder
 from ._common import synthetic_layout, make_token_chunk, on_grid, FSQ_STEP
 
-
 def _prev_new(rng, T=40, overlap=32):
     lay = synthetic_layout()
     latent_prev = make_token_chunk(overlap, 64, rng)
@@ -18,16 +17,14 @@ def _prev_new(rng, T=40, overlap=32):
     new = np.concatenate([latent_new, hands_new], axis=1)
     return lay, prev, new
 
-
 def test_first_plan_no_prev_snaps_latent():
     lay = synthetic_layout()
     rng = np.random.default_rng(0)
-    new = np.concatenate([make_token_chunk(40, 64, rng) + 0.003,  # nudge off-grid
+    new = np.concatenate([make_token_chunk(40, 64, rng) + 0.003,
                           rng.uniform(0, 1, (40, 14))], axis=1)
     res = rtc_style_stitch(new, None, lay)
     assert not np.isnan(res.actions).any()
     assert on_grid(res.actions[:, :64]), "latent must be snapped on-grid"
-
 
 def test_no_nan_and_freeze_region_holds_prev():
     rng = np.random.default_rng(1)
@@ -35,9 +32,8 @@ def test_no_nan_and_freeze_region_holds_prev():
     cfg = StitchConfig(freeze=3, blend_len=20)
     res = rtc_style_stitch(new, prev, lay, cfg)
     assert not np.isnan(res.actions).any()
-    # freeze region: every block equals prev
-    assert np.allclose(res.actions[:3], prev[:3], atol=1e-6)
 
+    assert np.allclose(res.actions[:3], prev[:3], atol=1e-6)
 
 def test_discrete_gate_latent_never_blended_offgrid():
     """The core discrete-gate assertion: latent dims are NEVER a linear blend of
@@ -50,29 +46,27 @@ def test_discrete_gate_latent_never_blended_offgrid():
     lat = res.actions[:, :64]
     assert on_grid(lat)
     overlap = 32
-    # freeze region latent == prev latent; after freeze (in overlap) == new latent
+
     assert np.allclose(lat[:3], prev[:3, :64], atol=1e-7)
     assert np.allclose(lat[3:overlap], new[3:overlap, :64], atol=1e-7)
-    # confirm it is NOT the linear blend (which would be off-grid / different)
+
     a = 0.5
     linblend = (1 - a) * prev[10, :64] + a * new[10, :64]
     assert not np.allclose(lat[10], linblend, atol=1e-6) or np.allclose(prev[10, :64], new[10, :64])
-
 
 def test_hands_weakly_blended_with_sqrt_alpha():
     rng = np.random.default_rng(3)
     lay, prev, new = _prev_new(rng)
     cfg = StitchConfig(freeze=0, blend_len=32, hand_alpha_power=0.5)
     res = rtc_style_stitch(new, prev, lay, cfg)
-    # reconstruct alpha at row i in the blend region and check hand value
+
     i = 8
     alpha = (i - 0 + 1) / (32 + 1)
     a_hand = alpha ** 0.5
     expected = (1 - a_hand) * prev[i, 64:] + a_hand * new[i, 64:]
     assert np.allclose(res.actions[i, 64:], expected, atol=1e-6)
-    # weak blend pulls toward NEW faster than a linear blend would
-    assert a_hand > alpha
 
+    assert a_hand > alpha
 
 def test_decoded_pose_returns_body_override():
     rng = np.random.default_rng(4)
@@ -82,10 +76,9 @@ def test_decoded_pose_returns_body_override():
     res = rtc_style_stitch(new, prev, lay, cfg, decoder=dec)
     assert res.body_pose_override is not None
     assert res.body_pose_override.shape == (40, 29)
-    # overlap region populated (finite), token stream still on-grid
+
     assert not np.isnan(res.body_pose_override[:32]).any()
     assert on_grid(res.actions[:, :64])
-
 
 def test_receding_horizon_executes_correct_steps_and_is_continuous():
     rng = np.random.default_rng(5)
@@ -102,5 +95,5 @@ def test_receding_horizon_executes_correct_steps_and_is_continuous():
         if last_exec is not None:
             boundary_jumps.append(np.abs(res.actions[0] - last_exec).max())
         last_exec = res.actions[-1]
-    # boundaries exist and are finite (continuity enforced via freeze)
+
     assert all(np.isfinite(j) for j in boundary_jumps)

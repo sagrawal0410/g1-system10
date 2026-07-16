@@ -19,7 +19,7 @@ print(f"\n--- Sample at frame_idx={frame_idx} ---")
 print(f"task: {sample.get('task', 'n/a')}")
 print(f"timestamp: {float(sample['timestamp'])}")
 
-img_t = sample["observation.images.head_cam"]  # CHW float32 in [0,1]
+img_t = sample["observation.images.head_cam"]
 img_np = (img_t.permute(1, 2, 0).numpy() * 255).astype(np.uint8)
 Image.fromarray(img_np).save(out_png)
 print(f"saved image: {out_png} shape={img_np.shape}")

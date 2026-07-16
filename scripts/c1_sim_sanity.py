@@ -44,14 +44,12 @@ SCENES = [
     f"{REPO}/gear_sonic/data/robot_model/model_data/g1/g1_29dof_with_hand.xml",
 ]
 DATASET = "/lambdafs/shaurya/g1_sonic_system1/data/g1_encoded_sonic"
-N_BODY = 29            # decoder output dim (12 legs + 3 waist + 14 arms)
-N_HIST = 10            # 10-frame proprio history
+N_BODY = 29
+N_HIST = 10
 TOKEN_DIM = 64
-
 
 def log(msg):
     print(msg, flush=True)
-
 
 def check_mujoco(steps: int, render: bool):
     log("\n=== (1) MuJoCo sim substrate ===")
@@ -85,7 +83,6 @@ def check_mujoco(steps: int, render: bool):
     log(f"  MuJoCo substrate: {'PASS' if ok else 'FAIL'}")
     return ok
 
-
 def _real_token(episode_index: int):
     import pyarrow.parquet as pq
 
@@ -93,24 +90,22 @@ def _real_token(episode_index: int):
     if not cand:
         return None
     tbl = pq.read_table(cand[0], columns=["action"])
-    a = np.asarray(tbl.column("action").to_pylist(), dtype=np.float32)  # (T, 78)
-    # take a mid-episode frame (past the initial standing token)
+    a = np.asarray(tbl.column("action").to_pylist(), dtype=np.float32)
+
     row = a[min(len(a) // 2, len(a) - 1)]
     return row[:TOKEN_DIM].astype(np.float32)
-
 
 def _assemble_obs(token: np.ndarray) -> np.ndarray:
     """Deploy-order 994-dim decoder obs, upright/at-default proprio (open-loop)."""
     base_ang_vel = np.zeros(3 * N_HIST, np.float32)
-    body_pos = np.zeros(N_BODY * N_HIST, np.float32)     # rel-to-default -> 0 at default
+    body_pos = np.zeros(N_BODY * N_HIST, np.float32)
     body_vel = np.zeros(N_BODY * N_HIST, np.float32)
     last_act = np.zeros(N_BODY * N_HIST, np.float32)
-    grav = np.tile(np.array([0, 0, -1], np.float32), N_HIST)  # upright
+    grav = np.tile(np.array([0, 0, -1], np.float32), N_HIST)
     obs = np.concatenate([token.astype(np.float32), base_ang_vel, body_pos,
                           body_vel, last_act, grav]).astype(np.float32)
     assert obs.shape[0] == 994, obs.shape
     return obs[None, :]
-
 
 def check_decoder():
     log("\n=== (2) SONIC token decoder ONNX, open-loop ===")
@@ -142,7 +137,7 @@ def check_decoder():
     out = sess.run(None, {iname: _assemble_obs(tok)})[0].ravel()
     out0 = sess.run(None, {iname: _assemble_obs(np.zeros(TOKEN_DIM, np.float32))})[0].ravel()
     sens = float(np.abs(out - out0).mean())
-    arms = slice(15, 29)  # 14 arm joints in the 29-dim body vector
+    arms = slice(15, 29)
     sens_arms = float(np.abs(out[arms] - out0[arms]).mean())
     log(f"  decoder output dim: {out.shape[0]} (expect {N_BODY})")
     log(f"  |action| mean={np.abs(out).mean():.4f} max={np.abs(out).max():.4f}")
@@ -152,7 +147,6 @@ def check_decoder():
         f"{'PASS' if ok else 'FAIL'} "
         f"(Phase-0.5 saw ~0.47 all / ~0.51-0.57 arms)")
     return ok
-
 
 def main():
     ap = argparse.ArgumentParser()
@@ -181,7 +175,6 @@ def main():
     for k, v in results.items():
         log(f"  {k}: {'PASS' if v else 'FAIL'}")
     sys.exit(0 if all(results.values()) else 1)
-
 
 if __name__ == "__main__":
     main()

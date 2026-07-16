@@ -20,7 +20,6 @@ TEST_MODULES = [
     "phase_d.tests.test_decoder_onnx",
 ]
 
-
 def main() -> int:
     passed = failed = 0
     failures = []
@@ -33,7 +32,7 @@ def main() -> int:
                 fn()
                 print(f"  PASS {fn.__name__}")
                 passed += 1
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 print(f"  FAIL {fn.__name__}: {e}")
                 traceback.print_exc()
                 failures.append(f"{modname}.{fn.__name__}: {e}")
@@ -44,7 +43,6 @@ def main() -> int:
         for f in failures:
             print("  -", f)
     return 1 if failed else 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

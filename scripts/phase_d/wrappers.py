@@ -62,10 +62,6 @@ from .stitching import RecedingHorizonStitcher, StitchConfig, StitchResult
 from .ensembler import TemporalEnsembler
 from .reranker import RerankConfig, RunningStats, best_of_n
 
-
-# --------------------------------------------------------------------------
-# dict <-> concatenated-array adapters (match eval_openloop's concat order)
-# --------------------------------------------------------------------------
 def chunk_dict_to_array(chunk: dict, layout: ActionLayout) -> np.ndarray:
     """{block_name: [chunk_length, dim]} -> [chunk_length, total_dim] in layout
     order. Accepts GR00T's [1, chunk_length, dim] by squeezing a leading 1."""
@@ -79,25 +75,22 @@ def chunk_dict_to_array(chunk: dict, layout: ActionLayout) -> np.ndarray:
         parts.append(v)
     return np.concatenate(parts, axis=-1)
 
-
 def chunk_array_to_dict(arr: np.ndarray, layout: ActionLayout) -> dict:
     """[chunk_length, total_dim] -> {block_name: [chunk_length, dim]}."""
     return {b.name: np.asarray(arr)[:, b.slice] for b in layout.blocks}
 
-
 @dataclass
 class WrapperConfig:
-    mode: str = "receding_horizon"     # receding_horizon | temporal_ensemble
+    mode: str = "receding_horizon"
     execute: int = 8
     stitch: StitchConfig = field(default_factory=StitchConfig)
     use_best_of_n: bool = False
     rerank: RerankConfig = field(default_factory=RerankConfig)
     ensemble_m: float = 0.01
-    ensemble_max_timesteps: int = 100000  # sanity cap only (banded store is cheap)
-    # dims taken newest-only in the ensembler; None -> latent (FSQ) dims (the gate)
+    ensemble_max_timesteps: int = 100000
+
     ensemble_newest_only_dims: Optional[Sequence[int]] = None
     ensemble_quat_groups: Optional[Sequence[Sequence[int]]] = None
-
 
 class RecedingHorizonController:
     def __init__(
@@ -147,7 +140,6 @@ class RecedingHorizonController:
         self._replan_count += 1
         return stitched
 
-
 class TemporalEnsembleController:
     def __init__(
         self,
@@ -160,7 +152,7 @@ class TemporalEnsembleController:
         self.cfg = cfg or WrapperConfig()
         newest = self.cfg.ensemble_newest_only_dims
         if newest is None:
-            newest = layout.latent_indices()  # discrete gate: never average FSQ dims
+            newest = layout.latent_indices()
         self.ens = TemporalEnsembler(
             action_dim=layout.total_dim,
             chunk_length=layout.chunk_length,
@@ -180,7 +172,6 @@ class TemporalEnsembleController:
         chunk = np.asarray(self.predict(obs), dtype=np.float64)
         self.ens.add_chunk(t, chunk)
         return self.ens.get_action(t)
-
 
 def make_controller(predict_chunk_fn, layout, cfg=None, **kw):
     cfg = cfg or WrapperConfig()

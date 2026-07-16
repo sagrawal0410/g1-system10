@@ -36,10 +36,7 @@ from lerobot.rewards.topreward.compute_rabc_weights import (
     _resolve_task,
 )
 
-# 19 TRAIN episodes in VIDEO-dataset (g1_act_lerobot) index space
-# = all 22 minus held-out {0, 2, 16}. Matches results/eval_split.json.
 TRAIN_EPS = [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 19, 20, 21]
-
 
 def main():
     ap = argparse.ArgumentParser()
@@ -69,7 +66,7 @@ def main():
         image_key=cfg.image_key,
         task_key=cfg.task_key,
         default_task=cfg.default_task or "perform the manipulation task",
-        max_frames=None,  # prefix length is controlled explicitly
+        max_frames=None,
         fps=cfg.fps,
         prompt_prefix=cfg.prompt_prefix,
         prompt_suffix_template=cfg.prompt_suffix_template,
@@ -86,8 +83,6 @@ def main():
     all_index, all_episode, all_frame, all_progress = [], [], [], []
     raw = {}
 
-    # Patch compute_instruction_rewards_for_prefixes to also hand back raw
-    # anchor log-probs. We reimplement its inner loop here to capture raw.
     for episode_idx in tqdm(eps, desc="Episodes"):
         ep = dataset.meta.episodes[episode_idx]
         ep_start = int(ep["dataset_from_index"])
@@ -99,7 +94,6 @@ def main():
         first_sample = dataset[ep_start]
         task = _resolve_task(first_sample, default=cfg.default_task or "perform the manipulation task")
 
-        # ---- prefix sweep (mirrors compute_instruction_rewards_for_prefixes) ----
         num_samples = args.num_samples
         if num_samples is None or num_samples >= num_frames:
             prefix_lengths = np.arange(1, num_frames + 1, dtype=np.int64)
@@ -180,7 +174,6 @@ def main():
     if p.size:
         logging.info(f"progress_sparse: mean={p.mean():.4f} std={p.std():.4f} "
                      f"min={p.min():.4f} max={p.max():.4f}")
-
 
 if __name__ == "__main__":
     main()

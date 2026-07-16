@@ -30,7 +30,6 @@ from typing import Optional, Sequence
 
 import numpy as np
 
-
 def fsq_project_values(
     x: np.ndarray,
     step: float = 0.0625,
@@ -42,10 +41,9 @@ def fsq_project_values(
     q = np.round(x / step) * step
     if clamp is not None:
         q = np.clip(q, clamp[0], clamp[1])
-    # kill -0.0 and tiny fp dust so grid membership tests are exact
+
     q = q + 0.0
     return q.astype(np.float32)
-
 
 def fsq_project_action(
     action: np.ndarray,
@@ -62,20 +60,18 @@ def fsq_project_action(
     out[..., idx] = fsq_project_values(out[..., idx], step=step, clamp=clamp)
     return out
 
-
 @dataclass
 class FsqProjectionReport:
     n_values: int
-    frac_offgrid_before: float          # fraction of latent values not already on-grid
-    mean_abs_shift: float               # mean |v - project(v)| over latent values
+    frac_offgrid_before: float
+    mean_abs_shift: float
     max_abs_shift: float
-    frac_clamped: float                 # fraction pushed by the clamp
-    frac_offgrid_after: float           # should be ~0.0 (sanity)
+    frac_clamped: float
+    frac_offgrid_after: float
     rms_shift: float
 
     def as_dict(self) -> dict:
         return self.__dict__.copy()
-
 
 def fsq_projection_report(
     latent_values: np.ndarray,
@@ -93,7 +89,6 @@ def fsq_projection_report(
     q = fsq_project_values(x, step=step, clamp=clamp).astype(np.float64)
     shift = np.abs(x - q)
 
-    # off-grid (before) = distance to nearest grid point is > atol (ignoring clamp)
     round_only = np.round(x / step) * step
     offgrid_before = np.abs(x - round_only) > on_grid_atol
 
@@ -102,7 +97,6 @@ def fsq_projection_report(
     else:
         clamped = np.zeros_like(x, dtype=bool)
 
-    # after projection: verify on-grid
     q_round = np.round(q / step) * step
     offgrid_after = np.abs(q - q_round) > on_grid_atol
 

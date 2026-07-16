@@ -34,7 +34,6 @@ DECODER = f"{REPO}/gear_sonic_deploy/policy/release/model_decoder.onnx"
 RAW = "/lambdafs/shaurya/g1_sonic_system1/data/g1_raw_full"
 EVAL_SPLIT = os.path.expanduser("~/g1_sonic_system1/results/eval_split.json")
 
-# ---- authoritative constants (repo) ----
 NAMED_29 = [
     "left_hip_pitch_joint","left_hip_roll_joint","left_hip_yaw_joint","left_knee_joint",
     "left_ankle_pitch_joint","left_ankle_roll_joint",
@@ -55,14 +54,12 @@ HAND_14 = [
 MJ2ISAAC = np.array([0,6,12,1,7,13,2,8,14,3,9,15,22,4,10,16,23,5,11,17,24,18,25,19,26,20,27,21,28])
 ISAAC2MJ = np.array([0,3,6,9,13,17,1,4,7,10,14,18,2,5,8,11,15,19,21,23,25,27,12,16,20,22,24,26,28])
 
-# ---- SONIC TRAINING actuator model (gear_sonic/envs/manager_env/robots/g1.py) ----
-# stiffness = armature * (2*pi*10)^2 ; damping = 2*damping_ratio(2) * armature * (2*pi*10)
 _NF = 10.0 * 2.0 * np.pi
 _A5020, _A7514, _A7522, _A4010 = 0.003609725, 0.010177520, 0.025101925, 0.00425
 _S = lambda a: a * _NF**2
 _D = lambda a: 2.0 * 2.0 * a * _NF
-# per-joint (NAMED order) stiffness/damping/armature
-_KJ = {  # name-substring -> (stiffness, damping, armature)
+
+_KJ = {
     "hip_pitch": (_S(_A7522), _D(_A7522), _A7522), "hip_roll": (_S(_A7522), _D(_A7522), _A7522),
     "hip_yaw": (_S(_A7514), _D(_A7514), _A7514), "knee": (_S(_A7522), _D(_A7522), _A7522),
     "ankle": (2*_S(_A5020), 2*_D(_A5020), 2*_A5020),
@@ -89,7 +86,7 @@ _NAMES = ["left_hip_pitch","left_hip_roll","left_hip_yaw","left_knee","left_ankl
 KP = np.array([_gain(n,0) for n in _NAMES], np.float64)
 KD = np.array([_gain(n,1) for n in _NAMES], np.float64)
 ARMATURE = np.array([_gain(n,2) for n in _NAMES], np.float64)
-# SONIC training default joint pose (init_state.joint_pos), NAMED order
+
 DEFAULT = np.zeros(29, np.float64)
 for _i,_n in enumerate(_NAMES):
     if "hip_pitch" in _n: DEFAULT[_i] = -0.312
@@ -103,18 +100,16 @@ for _i,_n in enumerate(_NAMES):
 N_HIST, N_BODY, TOKD = 10, 29, 64
 LWRIST, RWRIST = "left_wrist_yaw_link", "right_wrist_yaw_link"
 
-
 def quat_rot_inv(q, v):
     """Rotate vector v from world into body frame (q = wxyz)."""
     w, x, y, z = q
-    # R^T @ v  ; build R from quat
+
     R = np.array([
         [1-2*(y*y+z*z), 2*(x*y-w*z),   2*(x*z+w*y)],
         [2*(x*y+w*z),   1-2*(x*x+z*z), 2*(y*z-w*x)],
         [2*(x*z-w*y),   2*(y*z+w*x),   1-2*(x*x+y*y)],
     ])
     return R.T @ v
-
 
 def load_session(episode):
     with open(EVAL_SPLIT) as f:
@@ -134,7 +129,6 @@ def load_session(episode):
             np.concatenate(d["action.robot_q_desired"]),
             np.concatenate(d["action.token_state"]))
 
-
 def load_pred_tokens(npz_path, n_expect):
     d = np.load(npz_path, allow_pickle=True)
     key = "pred_action" if "pred_action" in d.files else (
@@ -142,10 +136,9 @@ def load_pred_tokens(npz_path, n_expect):
     if key is None:
         raise KeyError(f"no pred_action in {npz_path}; keys={d.files}")
     pa = np.asarray(d[key], dtype=np.float32)
-    if pa.ndim == 3:  # (T, horizon, D) -> take first action of each chunk
+    if pa.ndim == 3:
         pa = pa[:, 0, :]
     return pa[:, :TOKD]
-
 
 class Sim:
     def __init__(self, history_order="oldest_first", obs_order="gravity_first"):
@@ -153,8 +146,7 @@ class Sim:
         self.mj = mujoco
         self.m = mujoco.MjModel.from_xml_path(SCENE)
         self.m.opt.timestep = 0.005
-        # semi-implicit integration is far more stable for stiff PD than the
-        # MJCF default (Euler) and closer to IsaacLab's implicit actuators.
+
         self.m.opt.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
         self.d = mujoco.MjData(self.m)
         self.sess = ort.InferenceSession(DECODER, providers=["CPUExecutionProvider"])
@@ -177,7 +169,7 @@ class Sim:
         self.rw = mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_BODY, RWRIST)
         self.ctrlrange = self.m.actuator_ctrlrange.copy()
         self.default_isaac = DEFAULT[MJ2ISAAC]
-        # match IsaacLab implicit-actuator rotor inertia (stabilises the PD)
+
         for i, vadr in enumerate(self.body_vadr):
             self.m.dof_armature[vadr] = ARMATURE[i]
 
@@ -191,20 +183,20 @@ class Sim:
         self.mj.mj_forward(self.m, self.d)
 
     def proprio(self):
-        q = self.d.qpos[self.body_qadr].copy()                     # named
+        q = self.d.qpos[self.body_qadr].copy()
         qv = self.d.qvel[self.body_vadr].copy()
         q_isaac = q[MJ2ISAAC]; qv_isaac = qv[MJ2ISAAC]
-        jpr = (q_isaac - self.default_isaac).astype(np.float32)    # joint_pos_rel isaac
+        jpr = (q_isaac - self.default_isaac).astype(np.float32)
         quat = self.d.qpos[self.free_qadr+3:self.free_qadr+7].copy()
         grav = quat_rot_inv(quat, np.array([0.0, 0.0, -1.0])).astype(np.float32)
         res = np.zeros(6)
         self.mj.mj_objectVelocity(self.m, self.d, self.mj.mjtObj.mjOBJ_BODY,
-                                  self.pelvis, res, 1)             # local frame
+                                  self.pelvis, res, 1)
         angvel = res[0:3].astype(np.float32)
         return grav, angvel, jpr, qv_isaac.astype(np.float32)
 
     def build_obs(self, token, hist):
-        # hist: dict of deques (each list of frames, oldest..newest as appended)
+
         def stack(name):
             frames = list(hist[name])
             if self.history_order == "newest_first":
@@ -214,7 +206,7 @@ class Sim:
                             stack("jpr"), stack("jvel"), stack("lastact"))
         if self.obs_order == "gravity_first":
             body = np.concatenate([g, a, jp, jv, la])
-        else:  # angvel_first (deploy-yaml order)
+        else:
             body = np.concatenate([a, jp, jv, la, g])
         obs = np.concatenate([token.astype(np.float32), body])[None]
         assert obs.shape[1] == 994, obs.shape
@@ -229,7 +221,6 @@ class Sim:
         htau = 5.0*(hand_target - hq) - 0.5*hv
         hlo = self.ctrlrange[self.hand_act, 0]; hhi = self.ctrlrange[self.hand_act, 1]
         self.d.ctrl[self.hand_act] = np.clip(htau, hlo, hhi)
-
 
 def run(args):
     import mujoco
@@ -248,7 +239,7 @@ def run(args):
           f"tokens {args.token_source} shape {tok30.shape}", flush=True)
 
     sim = Sim(history_order=args.history_order, obs_order=args.obs_order)
-    # init from recorded start pose (convert recorded root quat -> MuJoCo wxyz)
+
     root0 = qc[0, 0:7].astype(np.float64).copy()
     if args.root_quat == "xyzw":
         qx, qy, qz, qw = root0[3:7]
@@ -276,17 +267,17 @@ def run(args):
         f30 = min(int(k / 50.0 * fps), tok30.shape[0]-1)
         token = tok30[f30]
         if args.hold_default:
-            act_isaac = np.zeros(N_BODY, np.float32)      # q_target == default
+            act_isaac = np.zeros(N_BODY, np.float32)
         else:
             obs = sim.build_obs(token, hist)
             act_isaac = sim.sess.run(None, {sim.iname: obs})[0].ravel().astype(np.float32)
         peak = max(peak, float(np.abs(act_isaac).max()))
         act_named = act_isaac[ISAAC2MJ]
         q_target = DEFAULT + act_named
-        for _ in range(4):  # decimation
+        for _ in range(4):
             sim.pd(q_target, np.zeros(14))
             mujoco.mj_step(sim.m, sim.d)
-        # log + history update
+
         root7 = sim.d.qpos[sim.free_qadr:sim.free_qadr+7].copy()
         body_named = sim.d.qpos[sim.body_qadr].copy()
         log_root.append(root7.astype(np.float32))
@@ -308,7 +299,6 @@ def run(args):
     log_body = np.asarray(log_body); log_root = np.asarray(log_root)
     log_lw = np.asarray(log_lw); log_rw = np.asarray(log_rw)
 
-    # quick validation metrics vs reference (resampled to n_ctrl)
     def resamp(x):
         idx = np.linspace(0, len(x)-1, len(log_body)); lo=np.floor(idx).astype(int)
         hi=np.ceil(idx).astype(int); w=(idx-lo)[:,None]
@@ -343,7 +333,6 @@ def run(args):
         print(f"[video] wrote {vp}", flush=True)
     return summary
 
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--episode", type=int, default=2)
@@ -363,7 +352,6 @@ def main():
     if args.out_dir is None:
         args.out_dir = os.path.expanduser(f"~/g1_sonic_system1/results/physics/{args.row_label}")
     run(args)
-
 
 if __name__ == "__main__":
     main()

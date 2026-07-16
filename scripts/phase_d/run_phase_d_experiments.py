@@ -43,25 +43,20 @@ import numpy as np
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("run_phase_d")
 
-# scripts/ on path so `import eval_openloop` and `from phase_d...` both work
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from phase_d.layout import load_layout, ActionLayout, Block  # noqa: E402
-from phase_d.wrappers import RecedingHorizonController, WrapperConfig  # noqa: E402
-from phase_d.stitching import StitchConfig, RecedingHorizonStitcher, rtc_style_stitch  # noqa: E402
-from phase_d.reranker import RerankConfig, candidate_seed, oracle_best_of_k  # noqa: E402
-from phase_d.fsq import fsq_projection_report  # noqa: E402
-from phase_d.sonic_decoder import SonicOnnxDecoder  # noqa: E402
+from phase_d.layout import load_layout, ActionLayout, Block
+from phase_d.wrappers import RecedingHorizonController, WrapperConfig
+from phase_d.stitching import StitchConfig, RecedingHorizonStitcher, rtc_style_stitch
+from phase_d.reranker import RerankConfig, candidate_seed, oracle_best_of_k
+from phase_d.fsq import fsq_projection_report
+from phase_d.sonic_decoder import SonicOnnxDecoder
 
 K = 4
-CHUNK_SEED_BASE = 12345  # fixed base so the non-bestN sample (k=0) is reproducible
+CHUNK_SEED_BASE = 12345
 
-
-# --------------------------------------------------------------------------
-# GT + seeded chunk predictor for one episode (obs from dataset; open-loop)
-# --------------------------------------------------------------------------
 def build_episode_groot(policy, loader, episode_idx, embodiment_tag, layout, steps):
     from gr00t.data.dataset.sharded_single_step_dataset import extract_step_data
     from gr00t.data.utils import parse_observation_gr00t
@@ -84,16 +79,13 @@ def build_episode_groot(policy, loader, episode_idx, embodiment_tag, layout, ste
     assert gt_action.shape[1] == layout.total_dim, (gt_action.shape, layout.total_dim)
     state_joints = extract_cols(traj, [f"state.{k}" for k in state_keys])[:actual_steps]
 
-    # step-0 states for the proprio-ablation (proprio held at t0). GR00T state
-    # is entirely proprioceptive (no task-id in state) -> freeze the whole thing.
     dp0 = extract_step_data(traj, 0, modality_no_action, embodiment_tag)
     states0 = dict(dp0.states)
 
     cache: dict[tuple, np.ndarray] = {}
 
     def _predict(step_count, seed, frozen):
-        # Deterministic: seed=None -> baseline sample candidate_seed(step,0) (= I3
-        # k=0), so best-of-N's candidate set contains the baseline; reproducible.
+
         eff_seed = candidate_seed(int(step_count), 0, CHUNK_SEED_BASE, K) if seed is None else int(seed)
         key = (int(step_count), eff_seed, frozen)
         if key in cache:
@@ -103,7 +95,7 @@ def build_episode_groot(policy, loader, episode_idx, embodiment_tag, layout, ste
             torch.cuda.manual_seed_all(eff_seed)
         data_point = extract_step_data(traj, step_count, modality_no_action, embodiment_tag)
         obs = {}
-        states = states0 if frozen else data_point.states  # ablation: proprio @ t0
+        states = states0 if frozen else data_point.states
         for k, v in states.items():
             obs[f"state.{k}"] = v
         for k, v in data_point.images.items():
@@ -131,14 +123,6 @@ def build_episode_groot(policy, loader, episode_idx, embodiment_tag, layout, ste
 
     return gt_action, actual_steps, predict_chunk, predict_chunk_ablated, state_joints
 
-
-# --------------------------------------------------------------------------
-# ACT (LeRobot CVAE) policy runner. Baseline inference uses the zero CVAE latent
-# (deterministic). Best-of-N samples the CVAE latent ~ N(0, I) K times via a
-# scoped torch.zeros->seeded-randn patch guarded on the latent shape [B,32]
-# (the decoder_in zeros are 3D, no collision) -- this is the ACT analog of
-# GR00T's stochastic flow head. D1 stitching + FSQ projection apply unchanged.
-# --------------------------------------------------------------------------
 class ActRunner:
     def __init__(self, ckpt, dataset_path, layout, device="cuda:0", ablate_dims=None):
         import torch
@@ -161,28 +145,22 @@ class ActRunner:
         self.pre, self.post = make_pre_post_processors(
             policy_cfg=self.cfg, pretrained_path=str(pm),
             preprocessor_overrides={"device_processor": {"device": str(device)}})
-        # pyav backend: the node lacks the system ffmpeg libs torchcodec needs
-        # (Phase-0.5 note); pyav (av package) is installed and decodes H.264 fine.
+
         self.ds = LeRobotDataset(repo_id="local/act_eval", root=dataset_path, video_backend="pyav")
         try:
             self._efrom = self.ds.episode_data_index["from"]
             self._eto = self.ds.episode_data_index["to"]
         except Exception:
             self._efrom = self._eto = None
-        # ablate only the proprio dims (ACT-hands-in keeps the trailing task-id
-        # one-hot); None => whole state is proprio.
+
         self.ablate_dims = ablate_dims
-        # best-of-N via CVAE-latent sampling is INERT for this patched ACT: the
-        # discrete argmax head is posterior-collapsed (smoke: sampling the prior
-        # latent changes the output by 0.0). So best-of-N is not supported ->
-        # ACT "after Phase D" = D1 stitching (FSQ is also a no-op: the argmax
-        # head is natively on-grid). run_cfg records this.
+
         self.bestn_supported = False
 
     def _ep_range(self, ep):
         if self._efrom is not None:
             return int(self._efrom[ep]), int(self._eto[ep])
-        # fallback via meta episode lengths
+
         lengths = [self.ds.meta.episodes[i]["length"] for i in range(self.ds.num_episodes)]
         start = sum(lengths[:ep])
         return start, start + lengths[ep]
@@ -201,7 +179,7 @@ class ActRunner:
                 def patched(*a, **kw):
                     shp = a[0] if a else kw.get("size")
                     if shp is None and len(a) >= 2 and all(isinstance(x, int) for x in a[:2]):
-                        shp = list(a)  # torch.zeros(B, D) positional form
+                        shp = list(a)
                     if isinstance(shp, (list, tuple)) and len(shp) == 2 and int(shp[1]) == latent_dim:
                         runner._latent_patch_fires += 1
                         b = int(shp[0])
@@ -225,13 +203,13 @@ class ActRunner:
         cache = {}
 
         def _predict(step_count, seed, frozen):
-            # seed None -> deterministic zero-latent ACT baseline; seed set -> sampled latent.
+
             key = (int(step_count), None if seed is None else int(seed), frozen)
             if key in cache:
                 return cache[key]
             item = self.ds[efrom + min(int(step_count), n - 1)]
             st = item["observation.state"].clone()
-            if frozen:  # proprio held at t0 (keep trailing task-id dims of current)
+            if frozen:
                 st[:pdims] = state0[:pdims]
             obs = {"observation.state": st.unsqueeze(0)}
             for k in self.image_keys:
@@ -247,8 +225,6 @@ class ActRunner:
             cache[key] = chunk
             return chunk
 
-        # one-time diagnostic: does CVAE-latent sampling change the chunk? (records
-        # the posterior-collapse finding that gates best-of-N off for ACT.)
         if not getattr(self, "_diag_done", False):
             self._diag_done = True
             fires0 = self._latent_patch_fires
@@ -267,10 +243,6 @@ class ActRunner:
 
         return gt, n, predict_chunk, predict_chunk_ablated, state_joints
 
-
-# --------------------------------------------------------------------------
-# Drive one experiment config -> executed pred stream [actual_steps, total_dim]
-# --------------------------------------------------------------------------
 def run_config(predict_chunk, layout, gt_action, actual_steps, *, execute, stitch_cfg,
                use_bestN, decoder, rerank_cfg, oracle=False):
     D = layout.total_dim
@@ -285,14 +257,13 @@ def run_config(predict_chunk, layout, gt_action, actual_steps, *, execute, stitc
         t = 0
         replan = 0
         while t < actual_steps:
-            res = ctrl.step(obs=t, step_index=t)   # obs == absolute step index
+            res = ctrl.step(obs=t, step_index=t)
             take = min(execute, actual_steps - t)
             stream[t:t + take] = res.actions[:take]
             t += take
             replan += 1
         return stream
 
-    # ---- oracle upper bound: pick candidate closest to held-out GT ----
     stitcher = RecedingHorizonStitcher(layout, stitch_cfg, execute=execute, decoder=decoder)
     stitcher.reset()
     t = 0
@@ -307,22 +278,16 @@ def run_config(predict_chunk, layout, gt_action, actual_steps, *, execute, stitc
         t += take
     return stream
 
-
-# --------------------------------------------------------------------------
-# Metrics
-# --------------------------------------------------------------------------
 def msq_diff(x, n):
     if x.shape[0] <= n:
         return float("nan")
     return float(np.mean(np.diff(x, n=n, axis=0) ** 2))
-
 
 def on_grid_fraction(x, step=0.0625, atol=1e-6):
     x = np.asarray(x, dtype=np.float64)
     if x.size == 0:
         return float("nan")
     return float(np.mean(np.abs(x / step - np.round(x / step)) < atol))
-
 
 def boundary_discontinuity(pred, execute, block_slice):
     """Mean squared jump across chunk seams (t = execute, 2*execute, ...)."""
@@ -331,13 +296,11 @@ def boundary_discontinuity(pred, execute, block_slice):
         jumps.append(np.mean((pred[t, block_slice] - pred[t - 1, block_slice]) ** 2))
     return float(np.mean(jumps)) if jumps else float("nan")
 
-
 def error_vs_horizon(pred, gt, period):
     buckets = [[] for _ in range(period)]
     for t in range(pred.shape[0]):
         buckets[t % period].append(np.mean((pred[t] - gt[t]) ** 2))
     return [float(np.mean(b)) if b else float("nan") for b in buckets]
-
 
 def compute_rows(stream, gt, layout, execute, base, decoder=None):
     rows = []
@@ -360,15 +323,10 @@ def compute_rows(stream, gt, layout, execute, base, decoder=None):
         if b.is_latent:
             rows.append({**base, "block": b.name, "metric": "fsq_ongrid_fraction", "horizon_idx": -1,
                          "value": on_grid_fraction(p)})
-    # error-vs-horizon on the 'all' block
+
     for hi, v in enumerate(error_vs_horizon(stream, gt, execute)):
         rows.append({**base, "block": "all", "metric": "mse_at_horizon_idx", "horizon_idx": hi, "value": v})
 
-    # DECODED POSE-SPACE smoothness (System-0-native; more meaningful than
-    # token-space jerk for discrete FSQ latents). Decode the executed latent
-    # stream through the SONIC decoder (fixed_history) and measure pose jerk /
-    # seam discontinuity. Open-loop proxy: absolute pose not physics-faithful,
-    # but relative smoothness across configs is the quantity D1/D2 target.
     if decoder is not None:
         lb = layout.latent_blocks[0].slice
         decoder.reset()
@@ -381,10 +339,6 @@ def compute_rows(stream, gt, layout, execute, base, decoder=None):
                      "horizon_idx": -1, "value": boundary_discontinuity(pose, execute, slice(0, pose.shape[1]))})
     return rows
 
-
-# --------------------------------------------------------------------------
-# Plot (one episode)
-# --------------------------------------------------------------------------
 def make_plot(streams, gt, layout, out_path, title):
     import matplotlib
     matplotlib.use("Agg")
@@ -393,14 +347,14 @@ def make_plot(streams, gt, layout, out_path, title):
     out_path.parent.mkdir(parents=True, exist_ok=True)
     lb = layout.latent_blocks[0].slice
     fig, axes = plt.subplots(2, 1, figsize=(11, 7))
-    # (1) latent L2 norm over time
+
     ax = axes[0]
     ax.plot(np.linalg.norm(gt[:, lb], axis=-1), color="k", lw=2, label="GT")
     for name, s in streams.items():
         ax.plot(np.linalg.norm(s[:, lb], axis=-1), lw=1, alpha=0.8, label=name, linestyle="--")
     ax.set_title("latent block L2 norm over time (open-loop; NOT decoded xyz)")
     ax.set_ylabel("|latent|_2"); ax.legend(fontsize=7, ncol=3)
-    # (2) step-to-step latent change (seam spikes) -> smoothness proxy
+
     ax = axes[1]
     for name, s in streams.items():
         d = np.linalg.norm(np.diff(s[:, lb], axis=0), axis=-1)
@@ -412,8 +366,6 @@ def make_plot(streams, gt, layout, out_path, title):
     plt.savefig(out_path, dpi=110)
     plt.close(fig)
 
-
-# --------------------------------------------------------------------------
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--checkpoint", required=True)
@@ -457,11 +409,10 @@ def main():
     ep_records = {int(e["episode_index"]): e for e in split["eval"]}
     want_eps = [int(x) for x in args.episodes.split(",")]
 
-    # SONIC decoder for I3 roundtrip term (fixed_history mode -> stable/bounded)
     decoder = None
     if Path(args.decoder_onnx).exists():
         try:
-            import onnxruntime  # noqa: F401
+            import onnxruntime
             decoder = SonicOnnxDecoder(onnx_path=args.decoder_onnx, mode="fixed_history")
             log.info("SONIC decoder loaded (fixed_history) for I3 roundtrip term.")
         except Exception as e:
@@ -490,7 +441,6 @@ def main():
     else:
         raise ValueError(args.policy_type)
 
-    # RTC stitch config: body-strong / hand-weak; discrete-latent gate = newest_only.
     def stitch(freeze, blend, fsq_on):
         return StitchConfig(freeze=freeze, blend_len=blend, latent_strategy="newest_only",
                             hand_alpha_power=0.5, snap_latent_to_grid=fsq_on)
@@ -499,11 +449,8 @@ def main():
                               body_smooth_scale=1.0, hand_smooth_scale=0.2,
                               w_roundtrip=1.0 if decoder is not None else 0.0)
 
-    # Phase-D configs to dump as NPZ (the eval agent computes I0/base itself):
-    #   D1 = stitching only (I2): freeze 3, blend 20, no best-of-N, no FSQ snap.
-    #   D2 = best-of-N + FSQ (I3): + K=4 reranked (SONIC roundtrip) + FSQ projection.
     CONFIG_SPECS = [
-        # cfg, execute, freeze, blend, use_bestN, fsq_on
+
         ("D1", 8, 3, 20, False, False),
         ("D2", 8, 3, 20, True, True),
     ]
@@ -536,7 +483,7 @@ def main():
 
         for (cfg, execute, freeze, blend, use_bestN, fsq_on) in CONFIG_SPECS:
             if use_bestN and not bestn_supported:
-                continue  # ACT: D1 only
+                continue
             dec = decoder if use_bestN else None
             sc = stitch(freeze, blend, fsq_on)
             pred = run_config(predict_chunk, layout, gt_action, actual_steps,
@@ -556,7 +503,7 @@ def main():
                 state_joints=state_joints.astype(np.float32),
                 meta=np.array(meta, dtype=object),
             )
-            # informal sanity (NOT the official metrics; eval agent owns those)
+
             ong = on_grid_fraction(pred[:, layout.latent_blocks[0].slice])
             abl_delta = float(np.abs(pred - pred_abl).mean())
             log.info("  wrote %s  T=%d  mse=%.5f jerk=%.5f ongrid=%.3f  |Δablated|=%.5f",
@@ -570,7 +517,6 @@ def main():
         json.dump(run_cfg, f, indent=2)
     log.info("Wrote %d NPZ files to %s (run_config_%s.json in %s)",
              len(run_cfg["npz_files"]), npz_dir, npz_policy, out_dir)
-
 
 if __name__ == "__main__":
     main()

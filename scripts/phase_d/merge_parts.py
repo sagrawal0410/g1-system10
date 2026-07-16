@@ -14,7 +14,6 @@ import pandas as pd
 BASE = Path(sys.argv[1]) if len(sys.argv) > 1 else (
     Path(__file__).resolve().parent.parent.parent / "results" / "phase_d")
 
-
 def main():
     parts = sorted((BASE / "parts").glob("*/phase_d_metrics.csv"))
     if not parts:
@@ -33,7 +32,6 @@ def main():
     print(f"merged {len(merged)} rows from {len(parts)} policies -> {out}")
     print("policies:", sorted(merged.policy.unique()))
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

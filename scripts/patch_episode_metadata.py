@@ -28,7 +28,6 @@ import pandas as pd
 
 FPS_DEFAULT = 30
 
-
 def patch_one(ep_dir: Path):
     ep_parquet_candidates = glob.glob(str(ep_dir / "meta" / "episodes" / "chunk-*" / "file-*.parquet"))
     if not ep_parquet_candidates:
@@ -37,13 +36,11 @@ def patch_one(ep_dir: Path):
     if len(ep_parquet_candidates) != 1:
         print(f"  WARN: multiple episodes-parquet files in {ep_dir}, patching all")
 
-    # discover video keys from the videos/ subdir
     video_keys = []
     videos_dir = ep_dir / "videos"
     if videos_dir.exists():
         video_keys = [p.name for p in videos_dir.iterdir() if p.is_dir()]
 
-    # fps from info.json
     import json
     info_path = ep_dir / "meta" / "info.json"
     fps = FPS_DEFAULT
@@ -56,7 +53,7 @@ def patch_one(ep_dir: Path):
         ep_parquet = Path(ep_parquet)
         df = pd.read_parquet(ep_parquet)
         if "data/chunk_index" in df.columns:
-            continue  # already patched
+            continue
 
         length = int(df["length"].iloc[0]) if "length" in df.columns else None
 
@@ -69,7 +66,7 @@ def patch_one(ep_dir: Path):
             df[f"videos/{key}/to_timestamp"] = (length / fps) if length else 0.0
         df["meta/episodes/chunk_index"] = 0
         df["meta/episodes/file_index"] = 0
-        # single-episode-per-dir dataset -> global index range == episode's own range
+
         if "episode_index" in df.columns and length is not None:
             df["dataset_from_index"] = 0
             df["dataset_to_index"] = length
@@ -77,7 +74,6 @@ def patch_one(ep_dir: Path):
         df.to_parquet(ep_parquet)
         changed_any = True
     return changed_any
-
 
 def main():
     data_root = Path(sys.argv[1]).expanduser().resolve()
@@ -87,10 +83,9 @@ def main():
     print(f"Found {len(ep_dirs)} episode-session directories under {data_root.parent if False else data_root}")
     n_patched = 0
     for ep_dir in ep_dirs:
-        # ep_dir here is the "meta" dir's parent's parent trick above is wrong; fix below
+
         pass
 
-    # Correct glob: info.json is at <ep_dir>/meta/info.json
     ep_dirs = sorted(set(p.parent.parent for p in data_root.glob("*/*/meta/info.json")))
     print(f"Patching {len(ep_dirs)} episode-session directories...")
     for ep_dir in ep_dirs:
@@ -98,7 +93,6 @@ def main():
         if patch_one(ep_dir):
             n_patched += 1
     print(f"\nDone. Patched {n_patched}/{len(ep_dirs)} directories (others already patched or skipped).")
-
 
 if __name__ == "__main__":
     main()

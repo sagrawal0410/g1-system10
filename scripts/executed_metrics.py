@@ -48,7 +48,6 @@ import json
 import os
 import sys
 
-# Headless offscreen rendering: must be set BEFORE mujoco is imported.
 os.environ.setdefault("MUJOCO_GL", "egl")
 
 import numpy as np
@@ -58,7 +57,6 @@ G1_XML = f"{REPO}/gear_sonic/data/robot_model/model_data/g1/g1_29dof_with_hand.x
 RAW = "/lambdafs/shaurya/g1_sonic_system1/data/g1_raw_full"
 DEF_EVAL_SPLIT = os.path.expanduser("~/g1_sonic_system1/results/eval_split.json")
 
-# 29 body joints, named order == robot_q_desired[7:36] == MuJoCo joint order.
 NAMED_29 = [
     "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint",
     "left_knee_joint", "left_ankle_pitch_joint", "left_ankle_roll_joint",
@@ -75,10 +73,6 @@ NAMED_29 = [
 LEFT_WRIST_BODY = "left_wrist_yaw_link"
 RIGHT_WRIST_BODY = "right_wrist_yaw_link"
 
-
-# ---------------------------------------------------------------------------
-# MuJoCo forward kinematics for wrist/EE positions
-# ---------------------------------------------------------------------------
 class G1FK:
     def __init__(self, xml=G1_XML):
         import mujoco
@@ -113,10 +107,6 @@ class G1FK:
             L.append(lw); R.append(rw)
         return np.asarray(L), np.asarray(R)
 
-
-# ---------------------------------------------------------------------------
-# Reference (dataset) loading
-# ---------------------------------------------------------------------------
 def load_reference(task, session):
     """Return dict with q_desired[N,36], q_current[N,36], fps."""
     import pyarrow.parquet as pq
@@ -134,7 +124,6 @@ def load_reference(task, session):
     qc = np.concatenate(arrs["observation.state.robot_q_current"])
     return {"q_desired": qd, "q_current": qc, "fps": 30.0}
 
-
 def resample(x, n):
     """Linear-resample sequence x (T,D) to length n."""
     T = len(x)
@@ -145,15 +134,10 @@ def resample(x, n):
     w = (idx - lo)[:, None]
     return (1 - w) * x[lo] + w * x[hi]
 
-
-# ---------------------------------------------------------------------------
-# Executed rollout loading
-# ---------------------------------------------------------------------------
 def load_rollout(npz_path):
     d = np.load(npz_path, allow_pickle=True)
     out = {k: d[k] for k in d.files}
     return out
-
 
 def load_executed_raw(ep_dir):
     """Load a physics rollout recorded by run_data_exporter.py on the 5090 (raw
@@ -173,7 +157,6 @@ def load_executed_raw(ep_dir):
     return {"body_qpos_named": qc[:, 7:36].astype(np.float32),
             "root_pose": qc[:, 0:7].astype(np.float32), "physics": np.bool_(True)}
 
-
 def executed_named_qpos(roll):
     """Return (q29_abs[N,29], root7[N,7] or None) if the log supports FK, else (None,None)."""
     if "body_qpos_named" in roll:
@@ -182,33 +165,26 @@ def executed_named_qpos(roll):
         return q, root
     return None, None
 
-
 def _f(x):
     return float(x) if np.isfinite(x) else float("nan")
 
-
-# ---------------------------------------------------------------------------
-# Metrics
-# ---------------------------------------------------------------------------
 def wrist_err(exec_L, exec_R, ref_L, ref_R):
     n = min(len(exec_L), len(ref_L))
     el = np.linalg.norm(exec_L[:n] - ref_L[:n], axis=1)
     er = np.linalg.norm(exec_R[:n] - ref_R[:n], axis=1)
     return el, er
 
-
 def stability(root7_seq):
     if root7_seq is None:
         return {"fall": np.nan, "root_roll_max_rad": np.nan, "root_pitch_max_rad": np.nan,
                 "min_root_z_m": np.nan}
     z = root7_seq[:, 2]
-    quat = root7_seq[:, 3:7]  # wxyz
+    quat = root7_seq[:, 3:7]
     w, x, y, zc = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]
     roll = np.arctan2(2 * (w * x + y * zc), 1 - 2 * (x * x + y * y))
     pitch = np.arcsin(np.clip(2 * (w * y - zc * x), -1, 1))
     return {"fall": float(z.min() < 0.4), "root_roll_max_rad": float(np.abs(roll).max()),
             "root_pitch_max_rad": float(np.abs(pitch).max()), "min_root_z_m": float(z.min())}
-
 
 def metrics_for_rollout(fk, roll, ref, physics):
     """Compute all supported metrics; NaN where unsupported."""
@@ -219,12 +195,11 @@ def metrics_for_rollout(fk, roll, ref, physics):
         n = len(q29)
         ref_body = resample(ref_qd[:, 7:36], n)
         ref_root = resample(ref_qd[:, 0:7], n)
-        # joint-space
+
         diff = q29 - ref_body
         m["joint_rmse_rad"] = _f(np.sqrt(np.mean(diff ** 2)))
         m["joint_maxabs_rad"] = _f(np.abs(diff).max())
-        # EE / wrist via FK, in the PELVIS frame (identity root) so arm tracking
-        # is not swamped by base locomotion; base tracking is captured by stability.
+
         eL, eR = fk.wrist_traj(q29)
         rL, rR = fk.wrist_traj(ref_body)
         el, er = wrist_err(eL, eR, rL, rR)
@@ -237,7 +212,7 @@ def metrics_for_rollout(fk, roll, ref, physics):
                   "stab_fall", "stab_root_roll_max_rad", "stab_root_pitch_max_rad",
                   "stab_min_root_z_m"]:
             m[k] = float("nan")
-    # divergence diagnostics (kinematic logs)
+
     m["decoder_peak_abs_rad"] = _f(roll["decoder_peak_abs_target_rad"]) \
         if "decoder_peak_abs_target_rad" in roll else float("nan")
     if "executed_body" in roll and "decoder_peak_abs_target_rad" not in roll:
@@ -245,10 +220,6 @@ def metrics_for_rollout(fk, roll, ref, physics):
     m["physics"] = bool(physics)
     return m
 
-
-# ---------------------------------------------------------------------------
-# Reference video (MuJoCo playback of the demo motion)
-# ---------------------------------------------------------------------------
 def render_reference_video(fk, ref, out_mp4, max_frames=300, size=(480, 640)):
     import mujoco, cv2
     os.environ.setdefault("MUJOCO_GL", "egl")
@@ -278,10 +249,6 @@ def render_reference_video(fk, ref, out_mp4, max_frames=300, size=(480, 640)):
     print(f"  [video] wrote {out_mp4} ({len(idxs)} frames)")
     return True
 
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -305,7 +272,6 @@ def main():
         split = json.load(f)
     eval_eps = split["eval"]
 
-    # rows: label -> {episode_index -> npz_path}
     rows = {}
     eval_ep_ids = [e["episode_index"] for e in eval_eps]
 
@@ -324,12 +290,12 @@ def main():
         add_dir_row(label, d)
 
     if args.auto_discover or not rows:
-        # discover cluster rollout dirs: results/hierarchy/<prefix>_ep<ep>/rollout_ep<ep>.npz
+
         import re
         hier = os.path.join(args.proj, "results/hierarchy")
         for npz in sorted(glob.glob(hier + "/*/rollout_ep*.npz")):
-            base = os.path.basename(os.path.dirname(npz))          # e.g. gt_targets_ep0
-            mlabel = re.sub(r"_ep\d+$", "", base)                  # -> gt_targets
+            base = os.path.basename(os.path.dirname(npz))
+            mlabel = re.sub(r"_ep\d+$", "", base)
             mep = re.search(r"rollout_ep(\d+)\.npz$", npz)
             if not mep:
                 continue
@@ -337,7 +303,6 @@ def main():
             label = {"gt_targets": "GT-targets"}.get(mlabel, f"hierarchy-{mlabel}")
             rows.setdefault(label, {})[ep] = npz
 
-    # raw physics recordings (5090 data_exporter): label -> {ep -> dir}
     raw_rows = {}
     for spec in args.raw_row:
         parts = spec.split("=", 2)
@@ -355,9 +320,8 @@ def main():
     fk = G1FK()
     os.makedirs(args.video_dir, exist_ok=True)
 
-    records = []  # (row, task, episode, metric, value, physics)
+    records = []
 
-    # per-episode reference caches + video
     ref_cache = {}
     for ev in eval_eps:
         task, session, ep = ev["task"], ev["session"], ev["episode_index"]
@@ -367,8 +331,7 @@ def main():
             print(f"[ref] episode {ep} ({task}): FAILED to load reference: {e}")
             continue
         ref_cache[ep] = (task, ref)
-        # ---- always-available real-robot floor: commanded (desired) vs achieved
-        # (current), arm tracking in the PELVIS frame (identity root).
+
         n = len(ref["q_desired"])
         eL, eR = fk.wrist_traj(ref["q_current"][:, 7:36])
         rL, rR = fk.wrist_traj(ref["q_desired"][:, 7:36])
@@ -384,11 +347,10 @@ def main():
             records.append(("real-robot(q_current)", task, ep, k, v, True))
         print(f"[floor] {task} ep{ep}: real-robot wrist track err "
               f"L={floor['ee_wrist_err_l_m']*1000:.1f}mm R={floor['ee_wrist_err_r_m']*1000:.1f}mm")
-        # reference video
+
         if not args.no_video:
             render_reference_video(fk, ref, os.path.join(args.video_dir, f"{task}_ep{ep}.mp4"))
 
-    # policy / GT rows
     for label, ep_map in rows.items():
         for ev in eval_eps:
             ep = ev["episode_index"]
@@ -409,7 +371,6 @@ def main():
                   f"ee_L={m['ee_wrist_err_l_m']} joint_rmse={m['joint_rmse_rad']} "
                   f"peak_abs={m['decoder_peak_abs_rad']}")
 
-    # raw physics recordings (5090)
     for label, ep_map in raw_rows.items():
         for ep, d in ep_map.items():
             if ep not in ref_cache:
@@ -430,7 +391,6 @@ def main():
                   f"ee_L={m['ee_wrist_err_l_m']} ee_R={m['ee_wrist_err_r_m']} "
                   f"joint_rmse={m['joint_rmse_rad']} fall={m['stab_fall']}")
 
-    # write CSV
     import csv
     os.makedirs(os.path.dirname(args.out_csv), exist_ok=True)
     with open(args.out_csv, "w", newline="") as f:
@@ -442,7 +402,6 @@ def main():
     print("Rows present:", sorted(set(r[0] for r in records)))
     print("NOTE: physics rows (base-proxy/GR00T-A/+Phase-D/ACT) come from the 5090 "
           "closed-loop eval; see results/eval_on_5090_runbook.md.")
-
 
 if __name__ == "__main__":
     main()

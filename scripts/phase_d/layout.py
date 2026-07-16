@@ -36,8 +36,6 @@ import json
 from pathlib import Path
 from typing import Optional
 
-
-# Fallback ONLY if the file is unreadable. Loudly flagged by the loader.
 _FALLBACK_BLOCKS = [
     ("motion_token", (0, 64), False),
     ("left_hand_joints", (64, 71), True),
@@ -46,26 +44,21 @@ _FALLBACK_BLOCKS = [
 _FALLBACK_TOTAL = 78
 _FALLBACK_CHUNK = 40
 
-# FSQ grid (from action_layout.json quantization block). Defaults used only if
-# the file omits them.
-_DEFAULT_FSQ_STEP = 0.0625  # 1/16
-_DEFAULT_FSQ_RANGE = (-0.625, 0.625)  # observed alphabet (21 levels); FSQ theory is 32 levels ~[-1,1)
-
+_DEFAULT_FSQ_STEP = 0.0625
+_DEFAULT_FSQ_RANGE = (-0.625, 0.625)
 
 def is_latent_block(name: str, continuous: Optional[bool] = None) -> bool:
     n = name.lower()
     if any(k in n for k in ("latent", "token", "motion")) and "hand" not in n:
         return True
-    # discrete non-hand block -> treat as latent even if oddly named
+
     if continuous is False and not is_hand_block(name):
         return True
     return False
 
-
 def is_hand_block(name: str) -> bool:
     n = name.lower()
     return any(k in n for k in ("hand", "gripper", "finger"))
-
 
 def hand_side(name: str) -> str:
     n = name.lower()
@@ -75,12 +68,11 @@ def hand_side(name: str) -> str:
         return "right"
     return "unknown"
 
-
 @dataclass
 class Block:
     name: str
     start: int
-    end: int  # exclusive
+    end: int
     continuous: Optional[bool] = None
 
     @property
@@ -99,7 +91,6 @@ class Block:
     def is_hand(self) -> bool:
         return is_hand_block(self.name)
 
-
 @dataclass
 class ActionLayout:
     total_dim: int
@@ -111,7 +102,6 @@ class ActionLayout:
     fsq_num_levels: Optional[int] = None
     source: str = "action_layout.json"
 
-    # ---- convenience selectors --------------------------------------------
     @property
     def latent_blocks(self) -> list[Block]:
         return [b for b in self.blocks if b.is_latent]
@@ -145,7 +135,7 @@ class ActionLayout:
                 f"[action_layout MISMATCH] blocks cover {covered} dims but "
                 f"total_dim={self.total_dim}. Fix action_layout.json; refusing to guess."
             )
-        # blocks must tile [0,total_dim) without gaps/overlaps
+
         ordered = sorted(self.blocks, key=lambda b: b.start)
         cursor = 0
         for b in ordered:
@@ -160,7 +150,6 @@ class ActionLayout:
                 f"[action_layout] blocks end at {cursor}, expected total_dim={self.total_dim}."
             )
 
-
 def _parse_block_list(items: list) -> list[Block]:
     out: list[Block] = []
     for item in items:
@@ -174,7 +163,6 @@ def _parse_block_list(items: list) -> list[Block]:
             raise ValueError(f"Unrecognized block record (no indices/start-end): {item}")
         out.append(Block(name=name, start=int(s), end=int(e), continuous=item.get("continuous")))
     return out
-
 
 def load_layout(path: str | Path) -> ActionLayout:
     """Load and validate the action layout. Raises loudly on an unrecognized

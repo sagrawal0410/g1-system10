@@ -10,7 +10,6 @@ from phase_d.reranker import (
 from phase_d.sonic_decoder import LinearMockDecoder
 from ._common import synthetic_layout, FSQ_STEP
 
-
 def _chunk(latent, hands=None, T=40):
     lat = np.asarray(latent, dtype=float)
     if lat.ndim == 1:
@@ -19,32 +18,28 @@ def _chunk(latent, hands=None, T=40):
         hands = np.zeros((T, 14))
     return np.concatenate([lat, hands], axis=1)
 
-
 def test_rerank_picks_smoothest_candidate():
     lay = synthetic_layout()
     rng = np.random.default_rng(0)
-    smooth = _chunk(np.cumsum(np.full((40, 64), 0.001), axis=0))          # tiny, smooth drift
-    jumpy1 = _chunk(rng.normal(0, 0.3, size=(40, 64)))                    # noisy
-    jumpy2 = _chunk(rng.normal(0, 0.6, size=(40, 64)))                    # noisier
+    smooth = _chunk(np.cumsum(np.full((40, 64), 0.001), axis=0))
+    jumpy1 = _chunk(rng.normal(0, 0.3, size=(40, 64)))
+    jumpy2 = _chunk(rng.normal(0, 0.6, size=(40, 64)))
     res = rerank([jumpy1, smooth, jumpy2], lay)
     assert res["best_index"] == 1, (res["costs"])
-
 
 def test_boundary_term_prefers_continuous_start():
     lay = synthetic_layout()
     prev_last = np.zeros(78)
-    cont = _chunk(np.zeros((40, 64)))                 # starts at 0 == prev_last
-    jump = _chunk(np.full((40, 64), 0.5))             # starts far from prev_last but constant after
+    cont = _chunk(np.zeros((40, 64)))
+    jump = _chunk(np.full((40, 64), 0.5))
     cfg = RerankConfig(w_velocity=0.0, w_accel=0.0, w_range=0.0, w_zscore=0.0, w_roundtrip=0.0)
     res = rerank([jump, cont], lay, cfg, prev_last=prev_last)
     assert res["best_index"] == 1
 
-
 def test_candidate_seed_varies_and_is_deterministic():
     seeds = {candidate_seed(step, k, base=0, K=4) for step in range(5) for k in range(4)}
     assert len(seeds) == 20, "each (step,k) must get a distinct seed"
-    assert candidate_seed(3, 2, 0, 4) == candidate_seed(3, 2, 0, 4)  # deterministic
-
+    assert candidate_seed(3, 2, 0, 4) == candidate_seed(3, 2, 0, 4)
 
 def test_roundtrip_term_zero_without_decoder_positive_with():
     lay = synthetic_layout()
@@ -54,7 +49,6 @@ def test_roundtrip_term_zero_without_decoder_positive_with():
     assert bd_no["roundtrip"] == 0.0
     _, bd_yes = candidate_cost(cand, lay, decoder=LinearMockDecoder(seed=3))
     assert bd_yes["roundtrip"] > 0.0
-
 
 def test_roundtrip_penalizes_jerky_pose():
     """Two candidates with matched latent-space stats but the decoder makes one
@@ -68,16 +62,14 @@ def test_roundtrip_penalizes_jerky_pose():
     res = rerank([jumpy, smooth], lay, cfg, decoder=dec)
     assert res["best_index"] == 1
 
-
 def test_fsq_range_penalty():
     lay = synthetic_layout()
     in_range = _chunk(np.full((40, 64), 0.5))
-    out_range = _chunk(np.full((40, 64), 1.2))  # beyond +/-0.625
+    out_range = _chunk(np.full((40, 64), 1.2))
     _, bd_in = candidate_cost(in_range, lay)
     _, bd_out = candidate_cost(out_range, lay)
     assert bd_in["range"] == 0.0
     assert bd_out["range"] > 0.0
-
 
 def test_body_vs_hand_smoothness_weighting():
     lay = synthetic_layout()
@@ -90,9 +82,8 @@ def test_body_vs_hand_smoothness_weighting():
                        body_smooth_scale=1.0, hand_smooth_scale=0.2)
     c_body, _ = candidate_cost(jumpy_body, lay, cfg)
     c_hands, _ = candidate_cost(jumpy_hands, lay, cfg)
-    # same-magnitude noise costs less in the hands (grasp snaps allowed)
-    assert c_hands < c_body
 
+    assert c_hands < c_body
 
 def test_best_of_n_uses_seeded_predict_fn():
     lay = synthetic_layout()
@@ -108,7 +99,6 @@ def test_best_of_n_uses_seeded_predict_fn():
     assert len(res["seeds"]) == 4 and len(set(res["seeds"])) == 4
     assert 0 <= res["best_index"] < 4
     assert res["candidate"].shape == (40, 78)
-
 
 def test_oracle_picks_closest_to_gt_and_is_labeled():
     lay = synthetic_layout()

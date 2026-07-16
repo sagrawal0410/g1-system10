@@ -30,7 +30,6 @@ MOD = REPO / "modeling_act.py"
 
 MARKER = "discrete_latent"
 
-
 def patch_config(text: str) -> str:
     if MARKER in text:
         raise SystemExit("configuration_act.py already patched (marker present). Aborting.")
@@ -51,7 +50,6 @@ def patch_config(text: str) -> str:
     )
     text = text.replace(anchor, addition, 1)
 
-    # Add validation + forced IDENTITY normalization on ACTION at end of __post_init__.
     post_anchor = (
         "        if self.n_obs_steps != 1:\n"
         "            raise ValueError(\n"
@@ -76,12 +74,10 @@ def patch_config(text: str) -> str:
     text = text.replace(post_anchor, post_addition, 1)
     return text
 
-
 def patch_model(text: str) -> str:
     if MARKER in text:
         raise SystemExit("modeling_act.py already patched (marker present). Aborting.")
 
-    # (a) __init__ head construction.
     init_anchor = (
         "        # Final action regression head on the output of the transformer's decoder.\n"
         "        self.action_head = nn.Linear(config.dim_model, self.config.action_feature.shape[0])\n"
@@ -104,7 +100,6 @@ def patch_model(text: str) -> str:
     )
     text = text.replace(init_anchor, init_new, 1)
 
-    # (b) forward() output head.
     fwd_anchor = (
         "        actions = self.action_head(decoder_out)\n"
         "\n"
@@ -134,7 +129,6 @@ def patch_model(text: str) -> str:
     )
     text = text.replace(fwd_anchor, fwd_new, 1)
 
-    # (c) ACTPolicy.forward loss computation.
     loss_anchor = (
         "        actions_hat, (mu_hat, log_sigma_x2_hat) = self.model(batch)\n"
         "\n"
@@ -182,9 +176,7 @@ def patch_model(text: str) -> str:
     )
     text = text.replace(loss_anchor, loss_new, 1)
 
-    # (d) predict_action_chunk uses self.model(batch)[0] -> still valid (actions first). No change.
     return text
-
 
 def main():
     for path, fn in [(CFG, patch_config), (MOD, patch_model)]:
@@ -198,7 +190,6 @@ def main():
         path.write_text(out)
         print(f"patched {path}  (backup: {bak})")
     print("OK: ACT discrete-latent head patch applied (default OFF).")
-
 
 if __name__ == "__main__":
     main()

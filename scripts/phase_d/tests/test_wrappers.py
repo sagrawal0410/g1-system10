@@ -11,7 +11,6 @@ from phase_d.stitching import StitchConfig
 from phase_d.reranker import RerankConfig
 from ._common import synthetic_layout, make_token_chunk, on_grid
 
-
 def test_dict_array_adapters_roundtrip():
     lay = synthetic_layout()
     rng = np.random.default_rng(0)
@@ -22,24 +21,21 @@ def test_dict_array_adapters_roundtrip():
     back = chunk_dict_to_array(d, lay)
     assert np.allclose(back, arr)
 
-
 def test_dict_adapter_squeezes_groot_leading_batch():
     lay = synthetic_layout()
     d = {
-        "motion_token": np.zeros((1, 40, 64)),      # GR00T [1, chunk, dim]
+        "motion_token": np.zeros((1, 40, 64)),
         "left_hand_joints": np.zeros((1, 40, 7)),
         "right_hand_joints": np.zeros((1, 40, 7)),
     }
     arr = chunk_dict_to_array(d, lay)
     assert arr.shape == (40, 78)
 
-
 def _make_predict(rng):
     def predict(obs, seed=None):
         r = np.random.default_rng(seed if seed is not None else rng.integers(1 << 30))
         return np.concatenate([make_token_chunk(40, 64, r), r.uniform(0, 1, (40, 14))], axis=1)
     return predict
-
 
 def test_receding_horizon_controller_streams():
     lay = synthetic_layout()
@@ -57,7 +53,6 @@ def test_receding_horizon_controller_streams():
     full = np.concatenate(stream, axis=0)
     assert full.shape == (40, 78)
 
-
 def test_receding_horizon_controller_best_of_n():
     lay = synthetic_layout()
     rng = np.random.default_rng(2)
@@ -74,10 +69,9 @@ def test_receding_horizon_controller_best_of_n():
     ctrl.reset()
     res = ctrl.step(obs=None, step_index=0)
     assert res.actions.shape == (8, 78)
-    # K=4 distinct seeds were used for the single replan
+
     assert len([s for s in seen_seeds if s is not None]) == 4
     assert len(set(seen_seeds)) == 4
-
 
 def test_temporal_ensemble_controller_latent_stays_on_grid():
     lay = synthetic_layout()
@@ -92,11 +86,10 @@ def test_temporal_ensemble_controller_latent_stays_on_grid():
         assert not np.isnan(a).any()
         outs.append(a)
     outs = np.stack(outs)
-    # latent dims are newest-only -> stay exactly on the FSQ grid (never averaged)
-    assert on_grid(outs[:, :64]), "ensembler must not average FSQ latent off-grid"
-    # hands ARE averaged -> generally NOT equal to any single grid value pattern
-    assert np.isfinite(outs[:, 64:]).all()
 
+    assert on_grid(outs[:, :64]), "ensembler must not average FSQ latent off-grid"
+
+    assert np.isfinite(outs[:, 64:]).all()
 
 def test_make_controller_factory():
     lay = synthetic_layout()

@@ -52,7 +52,6 @@ if _WEIGHTS:
     logging.info("RA-BC weight stats: mean=%.4f std=%.4f min=%.4f max=%.4f frac_zero=%.4f",
                  _vals.mean(), _vals.std(), _vals.min(), _vals.max(), float((_vals == 0).mean()))
 
-
 def _patch_dataset() -> None:
     from gr00t.data.dataset.sharded_single_step_dataset import ShardedSingleStepDataset
 
@@ -71,7 +70,7 @@ def _patch_dataset() -> None:
                 w = _WEIGHTS.get(key, _FALLBACK)
                 n_hit += int(key in _WEIGHTS)
                 n_tot += 1
-                # float32 0-d numpy scalar -> collator np.stack -> (B,) tensor
+
                 dp["rabc_weight"] = np.asarray(w, dtype=np.float32)
                 datapoints.append(dp)
         if n_tot and idx == 0:
@@ -81,14 +80,12 @@ def _patch_dataset() -> None:
     ShardedSingleStepDataset.get_shard = get_shard
     logging.info("Patched ShardedSingleStepDataset.get_shard to attach per-sample RA-BC weights.")
 
-
 def _patch_trainer() -> None:
     import torch
     from gr00t.experiment.trainer import Gr00tTrainer
 
     orig_compute_loss = Gr00tTrainer.compute_loss
 
-    # optional per-block logging layout (mirrors launch_sft.py)
     blocks = {"latent": (0, 64), "left_hand": (64, 71), "right_hand": (71, 78)}
     layout_path = os.environ.get("ACTION_LAYOUT_PATH")
     if layout_path and Path(layout_path).exists():
@@ -110,7 +107,7 @@ def _patch_trainer() -> None:
     logging.info("Per-block loss logging layout: %s", blocks)
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
-        # 1) Pop the RA-BC weight BEFORE the model runs (model must not see it).
+
         w = None
         try:
             inner = inputs["inputs"] if ("inputs" in inputs) else inputs
@@ -124,15 +121,14 @@ def _patch_trainer() -> None:
             self, model, inputs, return_outputs=True, num_items_in_batch=num_items_in_batch
         )
 
-        # 2) Recompute the weighted loss from the elementwise action_loss.
         try:
             if (w is not None and isinstance(outputs, dict)
                     and "action_loss" in outputs and "action_mask" in outputs):
-                al = outputs["action_loss"]           # (B, H, D), requires grad
-                am = outputs["action_mask"]           # (B, H, D)
+                al = outputs["action_loss"]
+                am = outputs["action_mask"]
                 wt = w.to(device=al.device, dtype=al.dtype).reshape(-1)
                 B = al.shape[0]
-                wt = wt * (B / (wt.sum() + 1e-6))     # normalise mean -> 1
+                wt = wt * (B / (wt.sum() + 1e-6))
                 wt = wt.view(B, *([1] * (al.dim() - 1)))
                 weighted = (al * wt).sum() / (am.sum() + 1e-6)
                 loss = weighted
@@ -148,7 +144,6 @@ def _patch_trainer() -> None:
         except Exception:
             logging.exception("RA-BC reweighting failed (non-fatal); using unweighted loss.")
 
-        # 3) Per-block loss logging (observational; mirrors launch_sft.py).
         try:
             should_log = (
                 self.state.global_step % self.args.logging_steps == 0
@@ -178,7 +173,6 @@ def _patch_trainer() -> None:
     Gr00tTrainer.compute_loss = compute_loss
     logging.info("Patched Gr00tTrainer.compute_loss for RA-BC weighting + block logging.")
 
-
 def _force_ddp() -> None:
     import gr00t.experiment.experiment as exp
     orig_run = exp.run
@@ -192,7 +186,6 @@ def _force_ddp() -> None:
         return orig_run(config)
 
     exp.run = run
-
 
 _patch_dataset()
 _patch_trainer()

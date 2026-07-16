@@ -24,7 +24,6 @@ agg = df[df["scope"] == "AGGREGATE"].copy()
 policies = list(dict.fromkeys(agg["checkpoint"].tolist()))
 BLOCKS = [b for b in ["motion_token", "left_hand_joints", "right_hand_joints", "all"] if b in set(agg["block"])]
 
-
 def _grouped_bar(metric, title, fname, blocks=None, logy=False, std=True):
     blocks = blocks or BLOCKS
     fig, ax = plt.subplots(figsize=(max(8, 1.4 * len(policies) * len(blocks) / 2), 5))
@@ -50,7 +49,6 @@ def _grouped_bar(metric, title, fname, blocks=None, logy=False, std=True):
     plt.savefig(OUT / fname, dpi=120)
     plt.close(fig)
     print("wrote", OUT / fname)
-
 
 _grouped_bar("mse", "Per-block MSE (AGGREGATE) — base vs fine-tuned", "core1_mse_per_block.png", logy=True)
 _grouped_bar("normalized_mse", "Per-block NORMALIZED MSE (÷GT var; 1.0=mean-predictor)", "core2_normalized_mse.png")

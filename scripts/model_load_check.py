@@ -1,5 +1,5 @@
 import os, sys, traceback
-import gr00t.model  # register Gr00tN1d7
+import gr00t.model
 from transformers import AutoModel, AutoProcessor
 BASE = "nvidia/GR00T-N1.7-3B"
 print("HF_HOME:", os.environ.get("HF_HOME"))

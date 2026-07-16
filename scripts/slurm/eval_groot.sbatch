@@ -8,10 +8,6 @@
 #SBATCH --cpus-per-gpu=12
 #SBATCH --time=01:00:00
 #SBATCH --output=/lambdafs/shaurya/g1_sonic_system1/logs/%x-%j.out
-# A2 open-loop eval. Env-configurable:
-#   CKPTS="label1=path1 label2=path2 ..."  (required, space-separated)
-#   DATASET=<full dataset with held-out eps>  (default g1_encoded_sonic)
-#   OUT_CSV, PLOT_DIR, STEPS
 set -euo pipefail
 
 export HF_HUB_CACHE=/lambdafs/shaurya/hf_cache/hub

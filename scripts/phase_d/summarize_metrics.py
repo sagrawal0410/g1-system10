@@ -25,12 +25,10 @@ METRICS = [
 ]
 AFTER_EXPS = ["I2_rtc_stitch", "I3_bestof4_rerank"]
 
-
 def val(df, policy, exp, fsq, block, metric):
     s = df[(df.policy == policy) & (df.experiment == exp) & (df.fsq == fsq)
            & (df.block == block) & (df.metric == metric)]["value"]
     return float(s.mean()) if len(s) else float("nan")
-
 
 def main():
     df = pd.read_csv(CSV)
@@ -69,7 +67,6 @@ def main():
                 fac = (i0 / best) if best > 0 else float("inf")
                 print(f"    {label:<28s}: {i0:.4g} -> {best:.4g}  ({fac:.2f}x {'better' if best < i0 else 'worse'})")
         print()
-
 
 if __name__ == "__main__":
     main()

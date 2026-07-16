@@ -1,0 +1,18 @@
+{
+  "bottle": {
+    "arm_mean_abs_corr": 0.322,
+    "best_arm_joint": "R_sh_r",
+    "best_arm_corr": 0.69,
+    "token_sensitivity_rad_mean": 0.467,
+    "token_sensitivity_rad_arms": 0.508,
+    "n_frames": 2925
+  },
+  "cup": {
+    "arm_mean_abs_corr": 0.408,
+    "best_arm_joint": "R_sh_r",
+    "best_arm_corr": 0.844,
+    "token_sensitivity_rad_mean": 0.474,
+    "token_sensitivity_rad_arms": 0.574,
+    "n_frames": 803
+  }
+}

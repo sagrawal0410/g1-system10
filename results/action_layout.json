@@ -1,0 +1,301 @@
+{
+  "phase": "0.5",
+  "generated_utc": "2026-07-16",
+  "generated_by": "phase0.5 agent",
+  "embodiment_tag": "unitree_g1_sonic",
+  "robot_type": "unitree_g1",
+  "fps": 30,
+  "source_of_truth": {
+    "embodiment_config": "repos/Isaac-GR00T/gr00t/configs/data/embodiment_configs.py :: unitree_g1_sonic",
+    "sonic_checkpoint_config": "repos/GR00T-WholeBodyControl/sonic_release/config.yaml",
+    "decoder_onnx": "repos/GR00T-WholeBodyControl/gear_sonic_deploy/policy/release/model_decoder.onnx",
+    "encoder_onnx": "repos/GR00T-WholeBodyControl/gear_sonic_deploy/policy/release/model_encoder.onnx",
+    "hand_def": "gear_sonic/data/robot_model/supplemental_info/g1/g1_supplemental_info.py",
+    "obs_config": "gear_sonic_deploy/policy/release/observation_config.yaml"
+  },
+  "action": {
+    "total_dim": 78,
+    "chunk_length": 40,
+    "chunk_length_source": "embodiment action delta_indices=range(40); run_vla_inference action_horizon=40",
+    "block_layout": [
+      {
+        "name": "motion_token",
+        "modality_key": "motion_token",
+        "dim": 64,
+        "indices": [
+          0,
+          64
+        ],
+        "source_dataset_field": "action.token_state",
+        "representation": "ABSOLUTE / NON_EEF",
+        "continuous": false,
+        "maps_cleanly": true,
+        "notes": "Real, populated SONIC FSQ latent. Consumed as float by the SONIC decoder ONNX (decoder input embeds the 64-dim token directly)."
+      },
+      {
+        "name": "left_hand_joints",
+        "modality_key": "left_hand_joints",
+        "dim": 7,
+        "indices": [
+          64,
+          71
+        ],
+        "source_dataset_field": "UNRESOLVED (see hand_mapping_status)",
+        "representation": "ABSOLUTE / NON_EEF",
+        "continuous": true,
+        "maps_cleanly": false,
+        "expected_semantics": "Unitree Dex3-1 3-finger hand joint angles (radians), joint order per g1_supplemental_info left_hand group: [index_0, index_1, middle_0, middle_1, thumb_0, thumb_1, thumb_2]"
+      },
+      {
+        "name": "right_hand_joints",
+        "modality_key": "right_hand_joints",
+        "dim": 7,
+        "indices": [
+          71,
+          78
+        ],
+        "source_dataset_field": "UNRESOLVED (see hand_mapping_status)",
+        "representation": "ABSOLUTE / NON_EEF",
+        "continuous": true,
+        "maps_cleanly": false,
+        "expected_semantics": "Unitree Dex3-1 3-finger hand joint angles (radians), same 7-joint order for right hand"
+      }
+    ]
+  },
+  "latent_continuous": false,
+  "quantization": {
+    "scheme": "FSQ (vector_quantize_pytorch.FSQ)",
+    "num_fsq_levels": 32,
+    "max_num_tokens": 2,
+    "token_layout": "64 = max_num_tokens(2) temporal tokens x 32 latent dims each",
+    "empirical_grid_step": 0.0625,
+    "empirical_grid_note": "All observed token_state values are integer multiples of 1/16 (0.0625).",
+    "observed_global_alphabet": [
+      -0.625,
+      -0.5625,
+      -0.5,
+      -0.4375,
+      -0.375,
+      -0.3125,
+      -0.25,
+      -0.1875,
+      -0.125,
+      -0.0625,
+      0.0,
+      0.0625,
+      0.125,
+      0.1875,
+      0.25,
+      0.3125,
+      0.375,
+      0.4375,
+      0.5,
+      0.5625,
+      0.625
+    ],
+    "observed_value_range": [
+      -0.625,
+      0.625
+    ],
+    "observed_distinct_values_per_dim": {
+      "bottle": "5..11",
+      "cup": "3..9",
+      "note": "per-dim distinct counts are limited by short episode length, not by codebook; theoretical per-dim level count is 32 (FSQ).",
+      "floor_box_table": "up to ~21 distinct globally; range +/-0.625 (+/-10/16)"
+    },
+    "storage_dtype": "float32 (stored as normalized FSQ output, NOT integer codes)",
+    "downstream_guidance": "latent_continuous=false: token_state is discrete-valued. For discrete modeling treat each of 64 dims as a 32-level FSQ categorical; the stored float values already lie on the FSQ grid and can be fed to the decoder as-is. If Phase D needs integer codes, derive them from vector_quantize_pytorch.FSQ(levels=32) using the exact bound/scale (confirm against sonic_release/config.yaml).",
+    "note_full_range": "Full 3-task sample: token_state reaches +/-0.625 (=+/-10/16); grid step 1/16; consistent with 32-level FSQ (theoretical range ~[-1,1)). 2-task sample only reached +/-0.4375."
+  },
+  "observation": {
+    "video_keys_dataset": [
+      "observation.images.head_cam",
+      "observation.images.left_wrist_cam",
+      "observation.images.right_wrist_cam"
+    ],
+    "video_key_embodiment": "ego_view (maps to head_cam)",
+    "depth_key": "observation.depths.head_cam_depth",
+    "camera_resolution": [
+      480,
+      640,
+      3
+    ],
+    "state_modality_keys": [
+      "left_leg",
+      "right_leg",
+      "waist",
+      "left_arm",
+      "right_arm",
+      "left_hand",
+      "right_hand",
+      "projected_gravity"
+    ],
+    "state_group_dims": {
+      "left_leg": 6,
+      "right_leg": 6,
+      "waist": 3,
+      "left_arm": 7,
+      "right_arm": 7,
+      "left_hand": 7,
+      "right_hand": 7,
+      "projected_gravity": 3
+    },
+    "state_total_dim": 46,
+    "state_source_field": "observation.state.robot_q_current (36 = 7 root pose + 29 body joints); hands from observation.state.hand_state; projected_gravity derived from observation.state.imu_torso_quaternion / gravity dir",
+    "note": "robot_q_current axis order (named in info.json): root(x,y,z,qw,qx,qy,qz) then 29 joints: L-leg(6),R-leg(6),waist(yaw,roll,pitch),L-arm(7),R-arm(7). Hand joints NOT in robot_q_current; they are in hand_state (12 bottle / 2 cup) -- see hand_mapping_status."
+  },
+  "decoder": {
+    "onnx_input_name": "obs_dict",
+    "onnx_input_dim": 994,
+    "onnx_output_name": "action",
+    "onnx_output_dim": 29,
+    "output_semantics": "29 body-joint targets (legs 12 + waist 3 + arms 14). Hands are NOT produced by the SONIC decoder; they are commanded separately (this is why the embodiment appends left/right_hand_joints as separate action blocks).",
+    "input_composition": "encoded_token(64) + proprioceptive history (10-frame body joint pos/vel, last actions, gravity dir, base angular velocity)",
+    "control_rate_hz": 50,
+    "sim_rate_hz": 200,
+    "closed_loop": true,
+    "closed_loop_note": "Decoder is a closed-loop tracking policy: token+proprio_history -> next 29-dim body action, iterated. There is no meaningful one-shot open-loop token->pose map; a token SEQUENCE must be rolled out closed-loop (MuJoCo WBC stack) to reproduce motion.",
+    "encoder_onnx_input_dim": 1762,
+    "encoder_onnx_output_dim": 64
+  },
+  "hand_mapping_status": "UNRESOLVED_HETEROGENEOUS",
+  "hand_mapping_detail": {
+    "embodiment_expects": "left_hand_joints(7) + right_hand_joints(7) = 14, being Unitree Dex3-1 3-finger hand joint angles in radians (WBC scene_43dof.xml, NUM_HAND_MOTORS=NUM_HAND_JOINTS=7 per hand).",
+    "dataset_reality": {
+      "bottle_cupnoodles_shelf": {
+        "hand_cmd_dim": 12,
+        "hand_state_dim": 12,
+        "value_range": "371..1000 (PWM-like)",
+        "interpretation": "12-DOF hand (Inspire-style, ~6 DOF/hand). NOT a 7-DOF/hand Dex3. Right hand active (dims vary), left hand ~constant.",
+        "also_has": "hand_tactile[2124]"
+      },
+      "cup_wipe_sponge_dryingrack": {
+        "hand_cmd_dim": 2,
+        "hand_state_dim": 2,
+        "value_range": "0.156..5.44 (radians/opening)",
+        "interpretation": "2-DOF parallel gripper (1 DOF/hand). NOT Dex3.",
+        "also_has": "observation.state.grid_width[2]"
+      }
+    },
+    "hand_cmd_pico": {
+      "dim_both_tasks": 14,
+      "shape_matches_embodiment": true,
+      "bottle": "range 0..1000; per-hand layout = 5 active dims + 2 constant (500, 0); left hand ~constant, right hand active.",
+      "cup": "range 0..1; only 1 active dim per hand (index 0 and 7), remaining 12 dims == 0.",
+      "verdict": "hand_cmd_pico is the only 7+7-shaped hand field present in BOTH tasks, but its SCALE (0-1000 vs 0-1) and ACTIVE-DIM semantics differ across tasks, and it is not verified to be Dex3 joint angles in radians. Not a clean, task-invariant mapping."
+    },
+    "clean_map": "motion_token(64) -> action.token_state[0:64] ONLY. The 14 hand dims have NO clean, consistent source across the two tasks.",
+    "recommended_options_for_main": [
+      "A) BODY-FIRST (lowest risk, recommended for GATE 0.5 + first SFT): train motion_token(64) only; zero/mask the 14 hand dims initially. The validated critical path (token_state roundtrip) is body-only anyway. Add hands after body path is proven.",
+      "B) hand_cmd_pico[14] as the hand block: use it as left(7)+right(7), but REQUIRE per-task normalization (bottle: /1000 -> [0,1]; cup already [0,1]) and carry a per-task active-dim mask. Treat as task-conditioned, not physically-identical joints.",
+      "C) PER-TASK hand adapters: map each task's native hand_cmd (12 Inspire / 2 gripper) into the 14-slot via documented per-task adapters + masks; loss masks unused dims.",
+      "D) SINGLE-TASK first training: restrict initial SFT to one task to avoid the heterogeneous-hand merge entirely."
+    ],
+    "recommendation": "Option A for GATE 0.5 and the first SFT (body/token-only), with Option B as the near-term hand plan once body path is validated. Do NOT silently merge the two tasks' hands into one 14-dim head without per-task normalization + masks.",
+    "pass1_decision": "ENDORSED BY main (2026-07-16): Pass-1 = Option A. Train motion_token(64) ONLY; zero/mask the 14 hand dims. First policy is body/latent-only and will NOT actuate grippers/hands (accepted first-result limitation). Do NOT merge the two tasks' hands into one head. Option B (hand_cmd_pico[14] with per-task normalization + per-task active-dim mask) is the documented follow-up for a later pass, not pass 1."
+  },
+  "tasks_present": {
+    "bottle_cupnoodles_shelf": {
+      "complete_episodes": 2,
+      "hand": "12-DOF dexterous",
+      "frames_example": 2935
+    },
+    "cup_wipe_sponge_dryingrack": {
+      "complete_episodes": 4,
+      "hand": "2-DOF gripper",
+      "frames_example": 813
+    }
+  },
+  "notes": [
+    "token_state validated REAL (non-trivial variance all 64 dims every episode; on FSQ 1/16 grid). monitoring.sonic_token_valid==1 for all frames in both inspected episodes.",
+    "LATENT_INITIAL_MOTION_TOKEN (initial_poses.py) is 64-dim on the SAME 1/16 grid -> our stored token_state is in this checkpoint's latent space (corroboration).",
+    "planner_cmd is mostly constant/unused in this teleop data (control_mode==3 throughout).",
+    "Metadata patch (scripts/patch_episode_metadata.py) must be re-applied to any newly downloaded episodes; load with video_backend='pyav'."
+  ],
+  "alignment_0_5a": {
+    "method": "MLP probe predicting token_state[t+offset] from measured proprio state[t] (robot_q_current[7:36] joints + joint_velocity, 58-dim), within-episode (no cross-episode wrap), edge rule t+offset+horizon(40) <= episode_length, 300 Adam steps/offset, 80/20 time-based train/val split. Plus velocity cross-correlation of action vs measured state.",
+    "offsets_probed": [
+      0,
+      2,
+      4,
+      8
+    ],
+    "val_mse_std_by_offset": {
+      "bottle": {
+        "0": 0.4293,
+        "2": 0.4703,
+        "4": 0.5255,
+        "8": 0.5833
+      },
+      "cup": {
+        "0": 2.0173,
+        "2": 1.8731,
+        "4": 2.0048,
+        "8": 2.0752
+      }
+    },
+    "xcorr_peak_lag_frames": {
+      "ee_action_vs_ee_state": {
+        "bottle": 2,
+        "cup": 1
+      },
+      "hand_cmd_vs_hand_state": {
+        "bottle": 0,
+        "cup": 0
+      }
+    },
+    "chosen_offset": 0,
+    "rationale": "bottle: val MSE increases monotonically with offset -> offset 0 clearly best. cup: curve flat/ambiguous (all offsets 1.87-2.08; weak min at 2 is ~7% and within noise on tiny data) -> default to 0 per runbook flat/ambiguous rule. token_state was computed at collection time by the same pipeline that logged state (co-logged) so offset 0 is expected. NOTE: the +1-2 frame ee_action->ee_state xcorr peak is the physical command->measured-state latency, NOT a target-labeling offset; token_state targets and proprio observations are already aligned at offset 0.",
+    "artifact": "results/alignment.png"
+  },
+  "video_codec": {
+    "codec": "h264",
+    "pix_fmt": "yuv420p",
+    "resolution": "640x480",
+    "fps": 30,
+    "cameras": [
+      "head_cam",
+      "left_wrist_cam",
+      "right_wrist_cam"
+    ],
+    "note": "Videos ARE H.264 (torchcodec's required codec). lerobot loads via video_backend='pyav' because the node lacks system ffmpeg libs and torchcodec fails to init. For the groot env: since codec is already H.264, installing ffmpeg shared libs in the groot env should let torchcodec work (no transcode needed). Reported for Phase A; not fixed here (Phase A's env)."
+  },
+  "dataset_scope": {
+    "token_bearing_tasks": {
+      "bottle_cupnoodles_shelf": 2,
+      "cup_wipe_sponge_dryingrack": 10,
+      "floor_box_table": 10
+    },
+    "token_bearing_episode_count": 22,
+    "no_token_state": {
+      "fold_edge_bed": 8,
+      "fold_pants": 10
+    },
+    "note": "action.token_state exists in only 3 of 5 tasks (22 eps). fold_edge_bed/fold_pants have NO token_state column -> excluded from the latent training set. Full 5-task coverage would require running the SONIC ENCODER offline over those 2 tasks (runbook 0.5b) -- post-gate follow-up.",
+    "source": "/lambdafs/shaurya/g1_sonic_system1/data/g1_raw_full (patched by main, 40 eps total)"
+  },
+  "gate_0_5": {
+    "verdict": "CONDITIONAL_PASS",
+    "latent_path_viable": true,
+    "use_pose_fallback": false,
+    "method": "Teacher-forced decode of stored token_state through the real released SONIC decoder ONNX (994->29 MLP, no norm; obs reconstructed from recorded 30Hz data; IsaacLab joint permutation applied).",
+    "decoder_onnx_io": {
+      "input_dim": 994,
+      "output_dim": 29,
+      "layout": "token(64)|gravity_10f(30)|base_ang_vel_10f(30)|joint_pos_rel_10f(290)|joint_vel_10f(290)|last_actions_10f(290)"
+    },
+    "evidence_for": [
+      "token_state on FSQ grid, in checkpoint latent space (same grid as LATENT_INITIAL_MOTION_TOKEN); sonic_token_valid==1 all frames.",
+      "Roundtrip was executed at collection time: decoder(token)->robot_q_desired->recorded (GATE-0-sensible) video; deployment consumes tokens the same way.",
+      "Decoder consumes our token: zeroing token shifts output ~0.47-0.57 rad (arms).",
+      "Offline decode tracks primary joint (shoulder-roll) corr 0.69 (bottle) / 0.84 (cup)."
+    ],
+    "caveat": "Full closed-loop PHYSICS roundtrip not runnable on this login node (Isaac Lab / C++ TensorRT unavailable; run_sim_loop.py runs the decoupled WBC, not SONIC). Decoder is 50Hz closed-loop; logs are 30Hz, so offline teacher-forced proxy is trend-correct but jittery (arm mean |corr| 0.32-0.41). This is an obs-reconstruction limit, NOT bad latents.",
+    "recommendation": "Proceed on latent path (motion_token(64) targets). Re-run definitive physics roundtrip where Isaac Lab / C++ stack is available (deferred verification).",
+    "artifacts": [
+      "results/gate05_roundtrip.png",
+      "results/gate05_summary.json",
+      "results/gate05_verdict.md"
+    ]
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "seed": 42,
+  "policy": "hold out max(1, round(0.10*n)) episodes per task; shared across GR00T + ACT via identical (task,session) ordering",
+  "dataset_ordering": "task-then-session alphabetical (matches g1_encoded_sonic and g1_act_lerobot)",
+  "eval": [
+    {
+      "episode_index": 0,
+      "task": "bottle_cupnoodles_shelf",
+      "session": "2026-07-06-04-15-52_bottle_cupnoodles_shelf"
+    },
+    {
+      "episode_index": 2,
+      "task": "cup_wipe_sponge_dryingrack",
+      "session": "2026-07-06-04-15-55_cup_wipe_sponge_dryingrack"
+    },
+    {
+      "episode_index": 16,
+      "task": "floor_box_table",
+      "session": "2026-07-06-09-45-17_floor_box_table"
+    }
+  ],
+  "n_eval": 3,
+  "n_total": 22,
+  "train_episode_indices": [
+    1,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    17,
+    18,
+    19,
+    20,
+    21
+  ]
+}

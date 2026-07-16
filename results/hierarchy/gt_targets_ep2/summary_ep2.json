@@ -1,0 +1,11 @@
+{
+  "backend": "dataset_gt",
+  "episode_index": 2,
+  "steps_executed": 400,
+  "control_freq_hz": 30.0,
+  "decoder_peak_abs_target_rad": 50.928,
+  "decoder_clipped_steps": 400,
+  "npz": "/home/shaurya/g1_sonic_system1/results/hierarchy/gt_targets_ep2/rollout_ep2.npz",
+  "physics": false,
+  "row": "GT-targets (SONIC tracking floor, kinematic)"
+}

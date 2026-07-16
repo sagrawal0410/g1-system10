@@ -1,0 +1,22 @@
+Phase C1 sanity -- stock MuJoCo substrate + SONIC token decoder (open-loop)
+repo=/lambdafs/shaurya/g1_sonic_system1/repos/GR00T-WholeBodyControl
+NOTE: stock run_sim_loop.py = DECOUPLED WBC (arm-interp + RL legs), needs unitree_sdk2py (absent here) and does NOT use the SONIC token decoder.
+
+=== (1) MuJoCo sim substrate ===
+  scene: /lambdafs/shaurya/g1_sonic_system1/repos/GR00T-WholeBodyControl/gear_sonic/data/robot_model/model_data/g1/scene_43dof.xml
+  model loaded: nq=50 nv=49 nu=43 nbody=45
+  stepped 200 steps; qpos finite=True qvel finite=True
+  offscreen EGL render OK: (240, 320, 3)
+  MuJoCo substrate: PASS
+
+=== (2) SONIC token decoder ONNX, open-loop ===
+  decoder input obs_dict [1, 994] -> action [1, 29]
+  real token from held-out episode 0: range [-0.312, 0.250], on-1/16-grid=True
+  decoder output dim: 29 (expect 29)
+  |action| mean=0.7056 max=4.0749
+  token sensitivity (mean|d| all)=0.4286 rad, arms=0.5064 rad
+  decoder consumes token & outputs 29-dim body action: PASS (Phase-0.5 saw ~0.47 all / ~0.51-0.57 arms)
+
+=== SUMMARY ===
+  mujoco: PASS
+  decoder: PASS

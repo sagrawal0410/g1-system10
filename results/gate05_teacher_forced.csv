@@ -1,0 +1,7 @@
+obs_order,history_order,imu_quat,obs_scales,mean_arm_abs_corr,max_joint_corr,body_rmse_rad,decoder_peak_abs_rad,is_best
+angvel_first,oldest_first,xyzw,none,0.691,0.967,0.290,0.82,yes
+angvel_first,oldest_first,xyzw,wbc,0.687,0.968,0.290,0.89,no
+angvel_first,newest_first,xyzw,none,0.634,0.964,0.293,0.89,no
+angvel_first,oldest_first,wxyz,none,0.724,0.982,2.330,10.20,no
+gravity_first,oldest_first,wxyz,none,0.415,0.832,1.186,5.08,no
+gravity_first,oldest_first,xyzw,none,0.386,0.758,1.118,4.99,no

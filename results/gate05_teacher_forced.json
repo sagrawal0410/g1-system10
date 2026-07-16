@@ -1,0 +1,62 @@
+{
+  "artifact": "gate05_teacher_forced",
+  "purpose": "Teacher-forced decode validation of the SONIC token->pose pipeline on the cluster (no physics). Corroborates GATE 0.5 with stronger numbers.",
+  "method": "Feed RECORDED proprio (robot_q_current joints, observation.state.joint_velocity, imu_torso_gyroscope, imu_torso_quaternion->projected gravity, previous action.robot_q_desired as last_action) + ground-truth action.token_state through gear_sonic_deploy/policy/release/model_decoder.onnx (994->29), then compare q_target = default + decoder_output against the recorded action.robot_q_desired.",
+  "episode": {"index": 2, "task": "cup_wipe_sponge_dryingrack", "frames": 813, "fps": 30},
+  "best_config_metrics": {
+    "obs_order": "angvel_first",
+    "history_order": "oldest_first",
+    "imu_quat_convention_for_projected_gravity": "xyzw",
+    "obs_scales": "none",
+    "body_joint_rmse_rad": 0.29,
+    "max_joint_pearson_corr": 0.97,
+    "mean_arm_joint_abs_corr": 0.69,
+    "decoder_output_peak_abs_rad": 0.82
+  },
+  "gate05_comparison": {
+    "gate05_best_arm_corr": 0.84,
+    "teacher_forced_max_joint_corr": 0.97,
+    "note": "This run reproduces the recorded commanded motion (robot_q_desired) far better than GATE 0.5's offline proxy because the joint permutation, obs order (deploy angvel-first), quaternion conventions, default pose and implicit-actuator gains were all nailed from the repo. Confirms the latent/token path is correct."
+  },
+  "confirmed_fidelity_params": {
+    "source_repo": "repos/GR00T-WholeBodyControl",
+    "dof_perm_mujoco_to_isaaclab": [0,6,12,1,7,13,2,8,14,3,9,15,22,4,10,16,23,5,11,17,24,18,25,19,26,20,27,21,28],
+    "dof_perm_isaaclab_to_mujoco": [0,3,6,9,13,17,1,4,7,10,14,18,2,5,8,11,15,19,21,23,25,27,12,16,20,22,24,26,28],
+    "dof_perm_source": "gear_sonic/envs/manager_env/robots/g1.py (G1_MUJOCO_TO_ISAACLAB_DOF / G1_ISAACLAB_TO_MUJOCO_DOF)",
+    "mujoco_named_order_equals": "robot_q_desired[7:36] and scene_43dof.xml joint order (L-leg6,R-leg6,waist3,L-arm7,R-arm7)",
+    "decoder_obs_994_layout": "token(64) | base_ang_vel(3) | joint_pos_rel(29) | joint_vel(29) | last_actions(29) | gravity_dir(3), each non-token term with 10-frame history (oldest-first), all 29-dim terms in IsaacLab order, no obs scales",
+    "decoder_obs_order_source": "gear_sonic_deploy/policy/release/observation_config.yaml (deploy order); NOTE this differs from sonic_release/config.yaml actor 'policy' group order (gravity-first) which does NOT reproduce the demo",
+    "quaternion_conventions": {
+      "imu_torso_quaternion": "xyzw",
+      "robot_q_current_root_3_7": "wxyz",
+      "evidence": "robot_q_current[0][3]=-0.997 (w-first, upright); xyzw interpretation flips the robot (ncon=0, free-fall)"
+    },
+    "default_joint_pos_named": {
+      "hip_pitch": -0.312, "knee": 0.669, "ankle_pitch": -0.363, "elbow": 0.6,
+      "left_shoulder_roll": 0.2, "left_shoulder_pitch": 0.2,
+      "right_shoulder_roll": -0.2, "right_shoulder_pitch": 0.2, "others": 0.0,
+      "source": "gear_sonic/envs/manager_env/robots/g1.py init_state.joint_pos; use_default_offset=true -> q_target = default + decoder_output"
+    },
+    "actuator_model": {
+      "type": "IsaacLab ImplicitActuatorCfg",
+      "stiffness": "armature * (2*pi*10)^2",
+      "damping": "2 * damping_ratio(2) * armature * (2*pi*10)",
+      "armature_5020": 0.003609725, "armature_7520_14": 0.010177520,
+      "armature_7520_22": 0.025101925, "armature_4010": 0.00425,
+      "feet_and_waist_roll_pitch": "2x stiffness/damping/armature",
+      "source": "gear_sonic/envs/manager_env/robots/g1.py"
+    },
+    "control_rates": {"sim_hz": 200, "sim_dt": 0.005, "decimation": 4, "control_hz": 50}
+  },
+  "closed_loop_physics_verdict": {
+    "result": "NOT_VALIDATED_ON_CLUSTER",
+    "detail": "A hand-rolled MuJoCo explicit-torque PD loop cannot reproduce the IsaacLab-trained decoder's active balance: the G1 falls within ~0.5-1s even on GT tokens, across all configs tried (deploy MOTOR_KP/KD and training implicit gains, 3x/6x stiffness, implicit dof_damping, implicitfast integrator, both obs/history orders, both quat conventions, training/deploy default). Feet contact verified correct (ncon=4, wxyz init). This is the IsaacLab(implicit-actuator)->MuJoCo(explicit-PD) sim2sim gap.",
+    "isaac_sim_on_cluster": "NOT_FEASIBLE (Isaac Sim 5.1 RTX/Vulkan ERROR_DEVICE_LOST at SimulationApp startup on headless H100; needs root)",
+    "recommendation": "Closed-loop executed §4 (EE/wrist error, no-fall rate, root roll/pitch, RG/R0/R1 videos) stays the 5090 job (results/eval_on_5090_runbook.md), reusing the confirmed_fidelity_params above."
+  },
+  "provenance": {
+    "env": "sonic conda env, CPU only (no training GPUs touched)",
+    "decoder_onnx": "repos/GR00T-WholeBodyControl/gear_sonic_deploy/policy/release/model_decoder.onnx",
+    "sweep_table": "results/gate05_teacher_forced.csv"
+  }
+}

@@ -1,0 +1,9 @@
+[submodule "third_party/Isaac-GR00T"]
+	path = third_party/Isaac-GR00T
+	url = https://github.com/NVIDIA/Isaac-GR00T.git
+[submodule "third_party/lerobot"]
+	path = third_party/lerobot
+	url = https://github.com/huggingface/lerobot.git
+[submodule "third_party/GR00T-WholeBodyControl"]
+	path = third_party/GR00T-WholeBodyControl
+	url = https://github.com/NVlabs/GR00T-WholeBodyControl.git

@@ -1,0 +1,131 @@
+diff --git a/src/lerobot/policies/act/configuration_act.py b/src/lerobot/policies/act/configuration_act.py
+index b5c3d68f..6f98fcf0 100644
+--- a/src/lerobot/policies/act/configuration_act.py
++++ b/src/lerobot/policies/act/configuration_act.py
+@@ -122,6 +122,12 @@ class ACTConfig(PreTrainedConfig):
+     dropout: float = 0.1
+     kl_weight: float = 10.0
+ 
++    # --- Phase B: discrete-latent (FSQ) action head (default OFF) ---
++    discrete_latent: bool = False
++    latent_block: list[int] | None = None
++    latent_num_classes: int = 32
++    latent_grid_scale: float = 16.0
++
+     # Training preset
+     optimizer_lr: float = 1e-5
+     optimizer_weight_decay: float = 1e-4
+@@ -150,6 +156,17 @@ class ACTConfig(PreTrainedConfig):
+                 f"Multiple observation steps not handled yet. Got `nobs_steps={self.n_obs_steps}`"
+             )
+ 
++        if self.discrete_latent:
++            if self.latent_block is None or len(self.latent_block) != 2:
++                raise ValueError("discrete_latent requires latent_block=[start, end].")
++            if self.latent_block[0] != 0:
++                raise ValueError("discrete_latent currently assumes latent_block starts at 0.")
++            # Raw FSQ-grid targets must survive to index derivation -> no action scaling.
++            self.normalization_mapping = {
++                **self.normalization_mapping,
++                "ACTION": NormalizationMode.IDENTITY,
++            }
++
+     def get_optimizer_preset(self) -> AdamWConfig:
+         return AdamWConfig(
+             lr=self.optimizer_lr,
+diff --git a/src/lerobot/policies/act/modeling_act.py b/src/lerobot/policies/act/modeling_act.py
+index 1432b68a..6423f170 100644
+--- a/src/lerobot/policies/act/modeling_act.py
++++ b/src/lerobot/policies/act/modeling_act.py
+@@ -140,14 +140,37 @@ class ACTPolicy(PreTrainedPolicy):
+             batch = dict(batch)  # shallow copy so that adding a key doesn't modify the original
+             batch[OBS_IMAGES] = [batch[key] for key in self.config.image_features]
+ 
+-        actions_hat, (mu_hat, log_sigma_x2_hat) = self.model(batch)
++        actions_hat, (mu_hat, log_sigma_x2_hat), extras = self.model(batch)
+ 
+-        abs_err = F.l1_loss(batch[ACTION], actions_hat, reduction="none")
+         valid_mask = ~batch["action_is_pad"].unsqueeze(-1)
+-        num_valid = valid_mask.sum() * abs_err.shape[-1]
+-        l1_loss = (abs_err * valid_mask).sum() / num_valid.clamp_min(1)
+-
+-        loss_dict = {"l1_loss": l1_loss.item()}
++        if self.config.discrete_latent:
++            ls, le = self.config.latent_block
++            half = self.config.latent_num_classes // 2
++            tok_target = batch[ACTION][..., ls:le]
++            tok_idx = (
++                torch.round(tok_target * self.config.latent_grid_scale).long() + half
++            ).clamp(0, self.config.latent_num_classes - 1)
++            logits = extras["token_logits"]
++            ce = F.cross_entropy(
++                logits.reshape(-1, self.config.latent_num_classes),
++                tok_idx.reshape(-1),
++                reduction="none",
++            ).view(tok_idx.shape)
++            ce_den = (valid_mask.sum() * ce.shape[-1]).clamp_min(1)
++            l1_loss = (ce * valid_mask).sum() / ce_den
++            loss_dict = {"latent_ce_loss": l1_loss.item()}
++            if extras["cont"] is not None:
++                cont_target = batch[ACTION][..., le:]
++                cont_abs = F.l1_loss(cont_target, extras["cont"], reduction="none")
++                cont_den = (valid_mask.sum() * cont_abs.shape[-1]).clamp_min(1)
++                hand_l1 = (cont_abs * valid_mask).sum() / cont_den
++                l1_loss = l1_loss + hand_l1
++                loss_dict["hand_l1_loss"] = hand_l1.item()
++        else:
++            abs_err = F.l1_loss(batch[ACTION], actions_hat, reduction="none")
++            num_valid = valid_mask.sum() * abs_err.shape[-1]
++            l1_loss = (abs_err * valid_mask).sum() / num_valid.clamp_min(1)
++            loss_dict = {"l1_loss": l1_loss.item()}
+         if self.config.use_vae and log_sigma_x2_hat is not None:
+             # Calculate Dₖₗ(latent_pdf || standard_normal). Note: After computing the KL-divergence for
+             # each dimension independently, we sum over the latent dimension to get the total
+@@ -366,8 +389,18 @@ class ACT(nn.Module):
+         # Learnable positional embedding for the transformer's decoder (in the style of DETR object queries).
+         self.decoder_pos_embed = nn.Embedding(config.chunk_size, config.dim_model)
+ 
+-        # Final action regression head on the output of the transformer's decoder.
+-        self.action_head = nn.Linear(config.dim_model, self.config.action_feature.shape[0])
++        # Final action head(s) on the output of the transformer's decoder.
++        action_dim = self.config.action_feature.shape[0]
++        if config.discrete_latent:
++            ls, le = config.latent_block
++            self.n_latent = le - ls
++            self.n_cont = action_dim - self.n_latent
++            self.token_head = nn.Linear(config.dim_model, self.n_latent * config.latent_num_classes)
++            self.cont_head = (
++                nn.Linear(config.dim_model, self.n_cont) if self.n_cont > 0 else None
++            )
++        else:
++            self.action_head = nn.Linear(config.dim_model, action_dim)
+ 
+         self._reset_parameters()
+ 
+@@ -507,9 +540,24 @@ class ACT(nn.Module):
+         # Move back to (B, S, C).
+         decoder_out = decoder_out.transpose(0, 1)
+ 
+-        actions = self.action_head(decoder_out)
++        if self.config.discrete_latent:
++            b, s, _ = decoder_out.shape
++            token_logits = self.token_head(decoder_out).view(
++                b, s, self.n_latent, self.config.latent_num_classes
++            )
++            half = self.config.latent_num_classes // 2
++            idx = token_logits.argmax(dim=-1)
++            tok_val = (idx - half).to(decoder_out.dtype) / self.config.latent_grid_scale
++            if self.cont_head is not None:
++                cont = self.cont_head(decoder_out)
++                actions = torch.cat([tok_val, cont], dim=-1)
++            else:
++                cont = None
++                actions = tok_val
++            return actions, (mu, log_sigma_x2), {"token_logits": token_logits, "cont": cont}
+ 
+-        return actions, (mu, log_sigma_x2)
++        actions = self.action_head(decoder_out)
++        return actions, (mu, log_sigma_x2), None
+ 
+ 
+ class ACTEncoder(nn.Module):

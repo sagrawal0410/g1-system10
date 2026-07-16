@@ -1,0 +1,13 @@
+policy,config,latent_MSE,chunk_boundary_discontinuity,latent_MS_jerk,latent_on_grid_fraction,note
+GR00T-A (hands-out),plain,0.0057,0.005654,0.00108,0.053,
+GR00T-A (hands-out),D1,0.0042,6.6e-05,0.00157,0.051,
+GR00T-A (hands-out),D2,0.0045,0.000335,0.00389,1.0,
+GR00T-B (hands-in),plain,0.0063,0.006132,0.00114,0.055,
+GR00T-B (hands-in),D1,0.0043,6.8e-05,0.00161,0.053,
+GR00T-B (hands-in),D2,0.0047,0.000316,0.00395,1.0,
+ACT-A (hands-out),plain,0.0061,0.005604,0.00238,1.0,
+ACT-A (hands-out),D1,0.0055,0.000238,0.00359,1.0,
+ACT-A (hands-out),D2,,,,,N/A (best-of-N inert on ACT discrete-argmax head; FSQ no-op)
+ACT-B (hands-in),plain,0.0061,0.005008,0.00216,1.0,
+ACT-B (hands-in),D1,0.0053,0.000251,0.00286,1.0,
+ACT-B (hands-in),D2,,,,,N/A (best-of-N inert on ACT discrete-argmax head; FSQ no-op)

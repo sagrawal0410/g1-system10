@@ -1,0 +1,13 @@
+policy,task,latent_MSE_base,latent_MSE_finetuned,latent_normMSE_finetuned,Rhand_MSE_finetuned,Rhand_graspF1_finetuned
+GR00T-A (hands-out),bottle_cupnoodles_shelf,0.0566,0.0087,1.37,0.0,
+GR00T-A (hands-out),cup_wipe_sponge_dryingrack,0.0509,0.0022,0.65,0.0,
+GR00T-A (hands-out),floor_box_table,0.0631,0.0062,0.58,0.0,
+GR00T-B (hands-in),bottle_cupnoodles_shelf,0.0551,0.0099,1.63,0.038,0.25
+GR00T-B (hands-in),cup_wipe_sponge_dryingrack,0.0478,0.0026,0.73,0.0003,1.0
+GR00T-B (hands-in),floor_box_table,0.0612,0.0063,0.59,0.0019,0.667
+ACT-A (hands-out),bottle_cupnoodles_shelf,0.2825,0.0095,1.53,0.0007,
+ACT-A (hands-out),cup_wipe_sponge_dryingrack,0.2446,0.0024,0.69,0.0004,
+ACT-A (hands-out),floor_box_table,0.2718,0.0065,0.67,0.0005,
+ACT-B (hands-in),bottle_cupnoodles_shelf,0.3216,0.0094,1.49,0.0413,0.5
+ACT-B (hands-in),cup_wipe_sponge_dryingrack,0.3531,0.0025,0.72,0.0133,0.333
+ACT-B (hands-in),floor_box_table,0.3618,0.0063,0.66,0.0088,0.333

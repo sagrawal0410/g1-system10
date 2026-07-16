@@ -1,0 +1,19 @@
+# datasets + vendored upstream repos (huge / separate git repos)
+data/
+/data
+repos/
+outputs/
+logs/
+wandb/
+# python caches
+**/__pycache__/
+*.pyc
+# large binaries / checkpoints / media
+*.mp4
+*.npz
+*.pt
+*.ckpt
+*.safetensors
+.DS_Store
+# markdown intentionally excluded from this repo
+*.md

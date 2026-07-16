@@ -2,6 +2,8 @@ Results + Metrics Analysis:
 
 The CORE metrics (what they mean)
 
+
+- End-to-end joint RMSE: raw error of the predicted actions from the end of the entire pipeline compared to the ground truth
 - MSE per block: raw error of the predicted 64-dim SONIC latent (and 7+7 hands) vs the demonstrated tokens. How close the commanded motion is to the demo.
 - Normalized MSE: MSE ÷ ground-truth variance. 1.0 = a mean-predictor (no learning) and <1 = real signal.
 - Grasp-event F1: did the hand open/close at the right moments, and how many frames early/late.
@@ -36,3 +38,6 @@ Inference Time Improvements (plain → D1/D2):
 - ACT gets D1 only: its argmax head is already 100% on-grid, and best-of-N doesn't do much (CVAE posterior collapse → identical samples).
 
 Per-task: cup and floor generalize well with a normMSE of around 0.58–0.73 and bottle is the weak task with a normMSE of around 1.37–1.63, because only one training episode survives after the held-out split — a documented data limitation, not a modeling failure.
+
+End-to-end Joint RMSE (Integration of policy with SONIC):
+- It is still decently high but ACT hands out does the best, the reason for this is because currently we are running on an open-loop with no physics causing the leg twitches because of minimal stability in the environment which is currently being fixed by a custom IsaacLab environment to test in, example videos show the current performance of the policy which is acceptable from the torso

@@ -1,0 +1,19 @@
+config,task,end_to_end_joint_rmse_rad
+GR00T-A (hands-out),bottle_cupnoodles_shelf,0.5207
+GR00T-A (hands-out),cup_wipe_sponge_dryingrack,0.3238
+GR00T-A (hands-out),floor_box_table,0.4551
+GR00T-B (hands-in),bottle_cupnoodles_shelf,0.5359
+GR00T-B (hands-in),cup_wipe_sponge_dryingrack,0.3245
+GR00T-B (hands-in),floor_box_table,0.4582
+ACT (hands-out),bottle_cupnoodles_shelf,0.4939
+ACT (hands-out),cup_wipe_sponge_dryingrack,0.3237
+ACT (hands-out),floor_box_table,0.427
+ACT (hands-in),bottle_cupnoodles_shelf,0.5069
+ACT (hands-in),cup_wipe_sponge_dryingrack,0.3235
+ACT (hands-in),floor_box_table,0.4213
+GR00T-A+PhaseD,bottle_cupnoodles_shelf,0.5116
+GR00T-A+PhaseD,cup_wipe_sponge_dryingrack,0.3208
+GR00T-A+PhaseD,floor_box_table,0.4359
+GR00T-B+PhaseD,bottle_cupnoodles_shelf,0.5141
+GR00T-B+PhaseD,cup_wipe_sponge_dryingrack,0.3232
+GR00T-B+PhaseD,floor_box_table,0.4374

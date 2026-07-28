@@ -141,7 +141,7 @@
   <h2>At a glance</h2>
   <div class="stats">
     <div class="stat"><div class="n acc">~53M vs 3B</div><div class="l">ACT matches GR00T's token accuracy at ~1/60th the parameters</div></div>
-    <div class="stat"><div class="n good">4 / 4</div><div class="l">policies pass GATE-A vs their base-proxy — real learning, not state-copying</div></div>
+    <div class="stat"><div class="n good">4 / 4</div><div class="l">pass <b>GATE-A</b> — the "did it really learn?" test: each fine-tuned policy must beat both a mean-predictor (normalized-MSE &lt; 1) and a state-copying baseline (proprio-leakage ≈ 0), scored against a near-zero-step version of itself</div></div>
     <div class="stat"><div class="n">0.016→0.64</div><div class="l">right-hand grasp-F1 (hands-in) — real learned grasp behavior</div></div>
     <div class="stat"><div class="n">1–2 orders</div><div class="l">chunk-boundary discontinuity cut by the inference-time stitching</div></div>
   </div>

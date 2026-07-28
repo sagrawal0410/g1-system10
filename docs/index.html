@@ -252,6 +252,9 @@ flowchart TD
     </table>
   </div>
   <p class="note">All four pass. ACT reaches the same ~0.006 latent MSE as the 3B GR00T at ~1/60th the parameters; GR00T-A holds the best normalized-MSE (0.87). The efficiency gap — not a raw-accuracy gap — is what makes ACT the practical pick.</p>
+  <div class="disclaim" style="border-left-color:var(--accent);margin-top:8px">
+    <b>Trade-off — efficiency vs grasp fidelity.</b> ACT and GR00T land at essentially the same latent-token accuracy (~0.006 MSE, ACT hands-in even edging GR00T-B), so at ~1/60th the size ACT is the more efficient — and marginally better — choice overall. The one place GR00T leads is fidelity on sharp, brief events: it scores higher grasp-F1 (right-hand <b>0.64 vs 0.39</b>), catching exact open/close timing a bit better than ACT's smaller discrete head. In the sim rollouts, that gap wasn't heavily visible.
+  </div>
 
   <h3 style="margin-top:22px">Inference-time improvements — plain → stitching (D1) → best-of-N + FSQ (D2)</h3>
   <div class="tbl-wrap" style="margin-bottom:22px">

@@ -233,18 +233,18 @@ flowchart LR
 <pre class="mermaid">
 %%{init:{'theme':'neutral','flowchart':{'htmlLabels':true}}}%%
 flowchart TD
-  G05["GATE-0.5 &nbsp;·&nbsp; token→pose decode round-trip<br/>reproduces commanded joints at corr 0.97"] --> GA
-  GA["GATE-A &nbsp;·&nbsp; base-proxy vs fine-tuned<br/>normalized-MSE &lt; 1 (beats mean-predictor) &amp; proprio-leakage ≈ 0 (uses vision not state-copying)"] --> PD["Phase-D inference-time checks<br/>chunk-boundary discontinuity ↓ · on-grid fraction → 1.0"]
+  G05["decode round-trip check &nbsp;·&nbsp; token→pose<br/>reproduces commanded joints at corr 0.97"] --> GA
+  GA["test 0 &nbsp;·&nbsp; base-proxy vs fine-tuned<br/>normalized-MSE &lt; 1 (beats mean-predictor) &amp; proprio-leakage ≈ 0 (uses vision not state-copying)"] --> PD["Phase-D inference-time checks<br/>chunk-boundary discontinuity ↓ · on-grid fraction → 1.0"]
   GA -.honest floors.-> FL["near-zero-step base-proxy · GT-target tracking · real-robot"]
 </pre>
     </div>
-    <figcaption>Correctness is established bottom-up. First the SONIC decoder is confirmed to consume the tokens in GATE-0.5. Then each policy must beat a mean-predictor at normalized-MSE &lt; 1. It must also beat a state-copying baseline at proprio-leakage ≈ 0. Passing both is GATE-A.</figcaption>
+    <figcaption>Correctness is established bottom-up. First the SONIC decoder is confirmed to consume the tokens in the decode round-trip check. Then each policy must beat a mean-predictor at normalized-MSE &lt; 1. It must also beat a state-copying baseline at proprio-leakage ≈ 0. Passing both is test 0.</figcaption>
   </figure>
 
-  <h3>GATE-A results. Base-proxy to fine-tuned aggregate over held-out tasks.</h3>
+  <h3>test 0 results. Base-proxy to fine-tuned aggregate over held-out tasks.</h3>
   <div class="tbl-wrap" style="margin-bottom:14px">
     <table>
-      <thead><tr><th>Policy</th><th>params</th><th>latent MSE base</th><th>latent MSE FT</th><th>norm-MSE base→FT</th><th>R-hand grasp-F1</th><th>proprio-leak</th><th>gate</th></tr></thead>
+      <thead><tr><th>Policy</th><th>params</th><th>latent MSE base</th><th>latent MSE FT</th><th>norm-MSE base→FT</th><th>R-hand grasp-F1</th><th>proprio-leak</th><th>test 0</th></tr></thead>
       <tbody>
         <tr class="hi"><td>ACT-B (hands-in) recommended</td><td>~53M</td><td>0.3455</td><td>0.0061</td><td>71.8 → 0.96</td><td>0.25 → 0.389</td><td>0.0003</td><td class="pass">PASS</td></tr>
         <tr class="hi"><td>ACT-A (hands-out)</td><td>~53M</td><td>0.2663</td><td>0.0061</td><td>51.9 → 0.96</td><td>n/a</td><td>0.0004</td><td class="pass">PASS</td></tr>

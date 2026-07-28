@@ -147,7 +147,7 @@
   </div>
   <div class="rec">
     <span class="tag">RECOMMENDED — ACT (HANDS-IN)</span>
-    <p>At <b>~53M parameters</b> ACT matches the 3B GR00T's latent-token accuracy (all policies land near <b>0.006 MSE</b>) while producing <b>on-grid SONIC codes by construction</b> — no FSQ-projection step and none of the projection-driven training instability GR00T's continuous head can show. It trains from scratch in-house and is small enough to iterate on quickly, which makes it the most practical System-1 policy to plug into SONIC here. <span class="muted">GR00T stays the stronger choice where broad generalization or language grounding matters; part of ACT's edge reflects overfitting to this small three-task set.</span></p>
+    <p>At <b>~53M parameters</b> ACT matches the 3B GR00T's latent-token accuracy (all policies land near <b>0.006 MSE</b>) while producing <b>on-grid SONIC codes by construction</b> — no FSQ-projection step and none of the projection-driven training instability GR00T's continuous head can show. It trains from scratch in-house and is small enough to iterate on quickly, which makes it the most practical System-1 policy to plug into SONIC here. And although its grasp-F1 comes in a bit lower than GR00T's, that gap isn't visible in the sim rollouts — the two look comparable in practice. <span class="muted">GR00T stays the stronger choice where broad generalization or language grounding matters; part of ACT's edge reflects overfitting to this small three-task set.</span></p>
   </div>
 </section>
 
